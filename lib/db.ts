@@ -521,13 +521,21 @@ Robert: Those numbers align with what we're hoping for. What's the implementatio
     insertMemory.run(accountId, memory.contact_id, memory.category, memory.content);
   }
 
-  // Create tasks
+  // Create tasks - mix of completed (past milestones) and open (current priorities)
   const tasks = [
-    { title: 'Send MSA draft to Jennifer', description: 'Jennifer requested MSA and SOW documents for legal review', status: 'todo', due_date: '2026-01-27' },
+    // Completed tasks (deal progress milestones)
+    { title: 'Send discovery deck to Sarah', description: 'Initial capabilities overview for VP Engineering', status: 'done', due_date: '2026-01-08' },
+    { title: 'Complete technical scoping call', description: 'Architecture review with David and streaming team', status: 'done', due_date: '2026-01-17' },
     { title: 'Set up POC environment for David', description: 'David needs a test environment to run load testing benchmarks', status: 'done', due_date: '2026-01-20' },
-    { title: 'Prepare security questionnaire responses', description: 'Complete ESPN security review questionnaire before Feb 1 deadline', status: 'in_progress', due_date: '2026-01-31' },
+    { title: 'Send ROI calculator to Marcus', description: 'Business case modeling for fantasy sports latency improvements', status: 'done', due_date: '2026-01-21' },
+    { title: 'CTO intro call with Robert', description: 'Executive sponsor alignment meeting', status: 'done', due_date: '2026-01-21' },
+
+    // Open tasks (current action items)
+    { title: 'Send MSA draft to Jennifer', description: 'Jennifer requested MSA and SOW documents for legal review', status: 'todo', due_date: '2026-01-27' },
     { title: 'Schedule technical deep-dive follow-up', description: 'David had additional questions about WebSocket migration path', status: 'todo', due_date: '2026-01-28' },
-    { title: 'Share case study with Robert', description: 'Robert asked for references from similar media company deployments', status: 'todo', due_date: '2026-01-29' }
+    { title: 'Share NFL case study with Robert', description: 'Robert asked for references from similar media company deployments', status: 'todo', due_date: '2026-01-29' },
+    { title: 'Prepare security questionnaire responses', description: 'Complete ESPN security review questionnaire before Feb 1 deadline', status: 'todo', due_date: '2026-01-31' },
+    { title: 'Coordinate POC results review', description: 'Schedule call to walk through benchmark results with David', status: 'todo', due_date: '2026-02-03' },
   ];
 
   const insertTask = db.prepare(`

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { MicrophoneIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
 // Type declarations for Web Speech API
 interface SpeechRecognitionEvent extends Event {
@@ -37,9 +38,10 @@ interface VoiceInputProps {
   onSend: (text: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  leftSlot?: React.ReactNode;
 }
 
-export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Ava, your AI sales agent' }: VoiceInputProps) {
+export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Ava, your AI sales agent', leftSlot }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -192,6 +194,9 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
       {/* Input area */}
       <form onSubmit={handleTextSubmit} className="relative">
         <div className="flex items-end gap-2 bg-white border border-gray-300 rounded-xl p-2 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-100 transition-all">
+          {/* Left slot (e.g., popular prompts popover) */}
+          {leftSlot}
+
           {/* Voice button */}
           {isSupported && (
             <button
@@ -205,14 +210,7 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
               } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               title={isRecording ? 'Stop recording' : 'Start voice input'}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                />
-              </svg>
+              <MicrophoneIcon className="w-5 h-5" />
             </button>
           )}
 
@@ -240,14 +238,7 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
             }`}
             title="Send message"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-              />
-            </svg>
+            <PaperAirplaneIcon className="w-5 h-5" />
           </button>
         </div>
       </form>

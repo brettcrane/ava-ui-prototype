@@ -12,27 +12,73 @@ interface Message {
   ui?: UITree;
   timestamp: Date;
   isStreaming?: boolean;
+  isGeneratingUI?: boolean;
 }
 
 interface ChatMessageProps {
   message: Message;
 }
 
+// Elegant thinking indicator - shows before any content
+function ThinkingIndicator() {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-7 h-7 rounded-full bg-purple-700 flex items-center justify-center text-white text-xs font-semibold">
+        A
+      </div>
+      <div className="flex items-center gap-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-[pulse_1s_ease-in-out_infinite_200ms]" style={{ animationDelay: '200ms' }} />
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-[pulse_1s_ease-in-out_infinite_400ms]" style={{ animationDelay: '400ms' }} />
+        </div>
+        <span className="text-sm text-gray-500">Ava is thinking...</span>
+      </div>
+    </div>
+  );
+}
+
+// Component generation indicator - shows after text, before UI
+function GeneratingUIIndicator() {
+  return (
+    <div className="mt-3 flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-100 rounded-xl">
+      <div className="relative w-5 h-5">
+        <div className="absolute inset-0 border-2 border-purple-200 rounded-full" />
+        <div className="absolute inset-0 border-2 border-purple-500 rounded-full border-t-transparent animate-spin" />
+      </div>
+      <span className="text-sm text-purple-700">Generating component...</span>
+    </div>
+  );
+}
+
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  const isThinking = message.isStreaming && !message.content;
+  const hasContent = message.content.length > 0;
+  // Show loader until we have actual renderable elements (not just a root key)
+  const hasRenderableUI = message.ui?.root && message.ui.elements && Object.keys(message.ui.elements).length > 0;
+  const showGeneratingIndicator = message.isGeneratingUI && !hasRenderableUI;
+
+  // For assistant messages that are still thinking (no content yet), show thinking indicator
+  if (!isUser && isThinking) {
+    return <ThinkingIndicator />;
+  }
+
+  // Assistant messages with UI should use full width, others can shrink to fit
+  const shouldUseFullWidth = !isUser && message.ui;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] ${isUser ? 'order-2' : 'order-1'}`}>
-        {/* Avatar */}
+      <div className={`${shouldUseFullWidth ? 'w-full' : 'max-w-[85%]'} ${isUser ? 'order-2' : 'order-1'}`}>
+        {/* Avatar and name - only for assistant */}
         {!isUser && (
           <div className="flex items-center gap-2 mb-1.5">
             <div className="w-7 h-7 rounded-full bg-purple-700 flex items-center justify-center text-white text-xs font-semibold">
               A
             </div>
             <span className="text-sm font-medium text-gray-700">Ava</span>
-            {message.isStreaming && (
-              <span className="flex items-center gap-1 text-[11px] text-gray-500">
+            {message.isStreaming && hasContent && (
+              <span className="flex items-center gap-1.5 text-[11px] text-purple-600">
                 <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
                 typing
               </span>
@@ -40,16 +86,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {/* Message content */}
-        <div
-          className={`rounded-2xl px-4 py-3 ${
-            isUser
-              ? 'bg-purple-700 text-white'
-              : 'bg-white border border-gray-200 text-gray-800'
-          }`}
-        >
-          {/* Text content */}
-          {message.content && (
+        {/* Message content - only show if there's content */}
+        {hasContent && (
+          <div
+            className={`rounded-2xl px-4 py-3 ${
+              isUser
+                ? 'bg-purple-700 text-white'
+                : 'bg-white border border-gray-200 text-gray-800'
+            }`}
+          >
             <div className={`text-sm leading-relaxed ${isUser ? '' : 'text-gray-700'}`}>
               {isUser ? (
                 <span className="whitespace-pre-wrap">{message.content}</span>
@@ -72,16 +117,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   {message.content}
                 </Markdown>
               )}
-              {message.isStreaming && !message.content && (
-                <span className="inline-flex gap-1">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
-              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Generating UI indicator - shows when text is done but UI is being generated */}
+        {!isUser && showGeneratingIndicator && <GeneratingUIIndicator />}
 
         {/* UI components (only for assistant messages) */}
         {!isUser && message.ui && (
@@ -93,10 +134,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {/* Timestamp */}
-        <p className={`text-[11px] text-gray-400 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
-          {formatTime(message.timestamp)}
-        </p>
+        {/* Timestamp - only show when not actively streaming/generating */}
+        {(!message.isStreaming && !showGeneratingIndicator) && (
+          <p className={`text-[11px] text-gray-400 mt-1.5 ${isUser ? 'text-right' : 'text-left'}`}>
+            {formatTime(message.timestamp)}
+          </p>
+        )}
       </div>
     </div>
   );
