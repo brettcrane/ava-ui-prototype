@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { ChatMessage } from './chat-message';
 import { VoiceInput } from './voice-input';
 import { PopularPromptsPopover } from './popular-prompts-popover';
@@ -12,30 +14,6 @@ import {
   TrashIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import type { UITree } from '@json-render/core';
-
-// Fallback UUID generator for non-secure contexts
-function generateId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // Fallback for non-secure contexts
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  ui?: UITree;
-  timestamp: Date;
-  isStreaming?: boolean;
-  isGeneratingUI?: boolean;
-}
 
 interface SavedChat {
   id: number;
@@ -43,27 +21,6 @@ interface SavedChat {
   messages_json: string;
   created_at: string;
   updated_at: string;
-}
-
-interface StreamChunk {
-  type: 'text' | 'ui_start' | 'patch' | 'done' | 'error';
-  content?: string;
-  patch?: { op: string; path: string; value: unknown };
-  error?: string;
-}
-
-// Apply a JSONL patch to build the UI tree
-function applyPatch(tree: UITree | null, patch: { op: string; path: string; value: unknown }): UITree {
-  const newTree: UITree = tree ? { ...tree, elements: { ...tree.elements } } : { root: '', elements: {} };
-
-  if (patch.op === 'set' && patch.path === '/root') {
-    newTree.root = patch.value as string;
-  } else if (patch.op === 'add' && patch.path.startsWith('/elements/')) {
-    const key = patch.path.replace('/elements/', '');
-    newTree.elements[key] = patch.value as UITree['elements'][string];
-  }
-
-  return newTree;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -86,30 +43,52 @@ const SUGGESTED_PROMPTS = [
   'I want to add a new task',
 ];
 
+const chatTransport = new DefaultChatTransport({ api: '/api/generate' });
+
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<number | null>(null);
   const [showChatMenu, setShowChatMenu] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
-  // Auto-scroll to bottom
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    error,
+  } = useChat({
+    transport: chatTransport,
+    experimental_throttle: 50,
+    onFinish: () => {
+      saveChatRef.current?.();
+    },
+  });
+
+  const isLoading = status === 'streaming' || status === 'submitted';
+
+  // Throttled auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   }, [messages]);
 
   const loadSavedChats = useCallback(async () => {
     try {
       const response = await fetch('/api/chats');
-      if (response.ok) {
-        const chats = await response.json();
-        setSavedChats(chats);
+      if (!response.ok) {
+        console.error(`Failed to load chats: ${response.status} ${response.statusText}`);
+        return;
       }
-    } catch {
-      console.error('Failed to load chats');
+      const chats = await response.json();
+      setSavedChats(chats);
+    } catch (error) {
+      console.error('Failed to load chats:', error);
     }
   }, []);
 
@@ -118,36 +97,28 @@ export function ChatInterface() {
     loadSavedChats();
   }, [loadSavedChats]);
 
-  const saveChat = useCallback(async (messagesToSave?: Message[], chatId?: number | null) => {
-    const msgs = messagesToSave || messages;
-    const id = chatId !== undefined ? chatId : currentChatId;
+  const saveChat = useCallback(async () => {
+    if (messages.length === 0) return;
 
-    if (msgs.length === 0) return;
+    const firstUserMessage = messages.find(m => m.role === 'user');
+    const firstUserText = firstUserMessage?.parts?.find((p): p is { type: 'text'; text: string } => p.type === 'text')?.text || '';
+    const title = firstUserText.slice(0, 50) + (firstUserText.length > 50 ? '...' : '') || 'New Chat';
 
-    // Generate title from first user message
-    const firstUserMessage = msgs.find(m => m.role === 'user');
-    const title = firstUserMessage?.content.slice(0, 50) + (firstUserMessage?.content.length! > 50 ? '...' : '') || 'New Chat';
-
-    // Convert messages for storage
-    const msgsForStorage = msgs.map(m => ({
+    // Serialize messages for storage
+    const msgsForStorage = messages.map(m => ({
       id: m.id,
       role: m.role,
-      content: m.content,
-      ui: m.ui,
-      timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+      parts: m.parts,
     }));
 
     try {
-      if (id) {
-        // Update existing chat
-        await fetch(`/api/chats/${id}`, {
+      if (currentChatId) {
+        await fetch(`/api/chats/${currentChatId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title, messages: msgsForStorage }),
         });
-        return id;
       } else {
-        // Create new chat
         const response = await fetch('/api/chats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -156,47 +127,69 @@ export function ChatInterface() {
         if (response.ok) {
           const newChat = await response.json();
           setCurrentChatId(newChat.id);
-          await loadSavedChats();
-          return newChat.id;
         }
       }
       await loadSavedChats();
-    } catch {
-      // Silent fail for auto-save, don't show error to user
+    } catch (error) {
+      console.warn('Auto-save failed:', error);
     }
-    return null;
   }, [messages, currentChatId, loadSavedChats]);
+
+  // Keep ref in sync for onFinish callback
+  useEffect(() => {
+    saveChatRef.current = saveChat;
+  }, [saveChat]);
 
   const loadChat = async (chatId: number) => {
     try {
       const response = await fetch(`/api/chats/${chatId}`);
-      if (response.ok) {
-        const chat = await response.json();
-        const loadedMessages: Message[] = JSON.parse(chat.messages_json).map((m: { id: string; role: 'user' | 'assistant'; content: string; ui?: UITree; timestamp: string }) => ({
-          ...m,
-          timestamp: new Date(m.timestamp),
-        }));
-        setMessages(loadedMessages);
-        setCurrentChatId(chatId);
-        setShowChatMenu(false);
+      if (!response.ok) {
+        console.error(`Failed to load chat ${chatId}: ${response.status} ${response.statusText}`);
+        setOperationError('Failed to load chat. Please try again.');
+        return;
       }
-    } catch {
-      setError('Failed to load chat');
+      const chat = await response.json();
+      const loadedMessages = JSON.parse(chat.messages_json).map((m: Record<string, unknown>) => {
+        // Validate/migrate message structure: old format used content, new uses parts
+        const parts = Array.isArray(m.parts) ? m.parts :
+          typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : [];
+        return {
+          ...m,
+          parts,
+          createdAt: m.createdAt ? new Date(m.createdAt as string) : new Date(),
+        };
+      });
+      setMessages(loadedMessages);
+      setCurrentChatId(chatId);
+      setShowChatMenu(false);
+      setOperationError(null);
+    } catch (error) {
+      console.error(`Failed to load chat ${chatId}:`, error);
+      const message = error instanceof SyntaxError
+        ? 'Chat data appears corrupted'
+        : 'Failed to load chat. Please check your connection.';
+      setOperationError(message);
     }
   };
 
   const deleteChatById = async (chatId: number) => {
     if (!confirm('Delete this chat?')) return;
-
     try {
-      await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        console.error(`Failed to delete chat ${chatId}: ${response.status} ${response.statusText}`);
+        setOperationError('Failed to delete chat. Please try again.');
+        return;
+      }
       await loadSavedChats();
       if (currentChatId === chatId) {
         setMessages([]);
         setCurrentChatId(null);
       }
-    } catch {
-      setError('Failed to delete chat');
+      setOperationError(null);
+    } catch (error) {
+      console.error(`Failed to delete chat ${chatId}:`, error);
+      setOperationError('Failed to delete chat. Please try again.');
     }
   };
 
@@ -204,182 +197,17 @@ export function ChatInterface() {
     setMessages([]);
     setCurrentChatId(null);
     setShowChatMenu(false);
+    setOperationError(null);
   };
 
-  // Send message to API
-  const sendMessage = useCallback(async (text: string) => {
+  const handleSend = useCallback((text: string) => {
     if (!text.trim() || isLoading) return;
+    sendMessage({ text });
+  }, [isLoading, sendMessage]);
 
-    setError(null);
-
-    // Add user message
-    const userMessage: Message = {
-      id: generateId(),
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-    };
-
-    // Add placeholder assistant message
-    const assistantMessage: Message = {
-      id: generateId(),
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true,
-    };
-
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
-    setIsLoading(true);
-
-    // Prepare messages for API (convert to Anthropic format)
-    // Filter out messages with empty content (except trailing assistant message)
-    const apiMessages = [...messages, userMessage]
-      .filter((msg) => msg.content.trim() !== '')
-      .map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      }));
-
-    // Create abort controller for this request
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let accumulatedText = '';
-      let uiTree: UITree | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process SSE events
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const chunk: StreamChunk = JSON.parse(line.slice(6));
-
-              switch (chunk.type) {
-                case 'text':
-                  accumulatedText += chunk.content || '';
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    const lastIdx = updated.length - 1;
-                    if (updated[lastIdx]?.role === 'assistant') {
-                      updated[lastIdx] = {
-                        ...updated[lastIdx],
-                        content: accumulatedText,
-                      };
-                    }
-                    return updated;
-                  });
-                  break;
-
-                case 'ui_start':
-                  // UI generation starting - show indicator
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    const lastIdx = updated.length - 1;
-                    if (updated[lastIdx]?.role === 'assistant') {
-                      updated[lastIdx] = {
-                        ...updated[lastIdx],
-                        isStreaming: false,
-                        isGeneratingUI: true,
-                      };
-                    }
-                    return updated;
-                  });
-                  break;
-
-                case 'patch':
-                  // Apply JSONL patch to progressively build UI
-                  if (chunk.patch) {
-                    uiTree = applyPatch(uiTree, chunk.patch);
-                    setMessages((prev) => {
-                      const updated = [...prev];
-                      const lastIdx = updated.length - 1;
-                      if (updated[lastIdx]?.role === 'assistant') {
-                        updated[lastIdx] = {
-                          ...updated[lastIdx],
-                          ui: uiTree || undefined,
-                          isGeneratingUI: true, // Still generating
-                        };
-                      }
-                      return updated;
-                    });
-                  }
-                  break;
-
-                case 'done':
-                  // Update messages and auto-save
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    const lastIdx = updated.length - 1;
-                    if (updated[lastIdx]?.role === 'assistant') {
-                      updated[lastIdx] = {
-                        ...updated[lastIdx],
-                        content: accumulatedText,
-                        ui: uiTree || undefined,
-                        isStreaming: false,
-                        isGeneratingUI: false,
-                      };
-                    }
-                    // Auto-save after state update
-                    setTimeout(() => {
-                      saveChat(updated, currentChatId);
-                    }, 0);
-                    return updated;
-                  });
-                  break;
-
-                case 'error':
-                  setError(chunk.error || 'An error occurred');
-                  break;
-              }
-            } catch {
-              // Ignore parse errors for incomplete chunks
-            }
-          }
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        // Request was cancelled
-        return;
-      }
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      // Remove the assistant placeholder on error
-      setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
-    } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
-    }
-  }, [messages, isLoading, saveChat, currentChatId]);
-
-  // Handle suggested prompt click
   const handleSuggestedPrompt = useCallback((prompt: string) => {
-    sendMessage(prompt);
-  }, [sendMessage]);
+    handleSend(prompt);
+  }, [handleSend]);
 
   return (
     <div className="flex flex-col h-full">
@@ -468,7 +296,6 @@ export function ChatInterface() {
               Your AI teammate here to help you win more deals.
             </p>
 
-            {/* Quick start prompts - just show top 3 in empty state */}
             <div className="w-full max-w-md">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Quick start</p>
               <div className="flex flex-col gap-2">
@@ -501,9 +328,14 @@ export function ChatInterface() {
       </div>
 
       {/* Error display */}
-      {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
+      {(error || operationError) && (
+        <div className="px-4 py-2 bg-red-50 border-t border-red-200 flex items-center justify-between">
+          <p className="text-sm text-red-600">{error?.message || operationError}</p>
+          {operationError && (
+            <button onClick={() => setOperationError(null)} className="text-xs text-red-500 hover:text-red-700 underline ml-2">
+              Dismiss
+            </button>
+          )}
         </div>
       )}
 
@@ -511,7 +343,7 @@ export function ChatInterface() {
       <div className="border-t border-gray-200 bg-gray-50 px-4 py-4">
         <div className="max-w-4xl mx-auto">
           <VoiceInput
-            onSend={sendMessage}
+            onSend={handleSend}
             disabled={isLoading}
             leftSlot={
               <PopularPromptsPopover
