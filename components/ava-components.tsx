@@ -46,6 +46,22 @@ function formatValue(value: string | number, format?: string): string {
 
 // ── Prop types ───────────────────────────────────────────────────────
 
+// Typed action payloads for type-safe action handling
+export type UpdateTaskStatusPayload = {
+  name: 'update_task_status';
+  params: { taskId: number; status: 'todo' | 'in_progress' | 'done' };
+};
+export type CreateTaskPayload = {
+  name: 'create_task';
+  params: { title: string; description?: string; dueDate?: string };
+};
+// Generic action for extensibility (e.g., ActionButton with custom actions)
+export type GenericActionPayload = {
+  name: string;
+  params: Record<string, unknown>;
+};
+export type ActionPayload = UpdateTaskStatusPayload | CreateTaskPayload | GenericActionPayload;
+
 export interface InfoCardProps {
   title: string;
   content: string;
@@ -97,7 +113,7 @@ export interface TaskItemProps {
   description?: string;
   status: 'todo' | 'in_progress' | 'done';
   dueDate?: string;
-  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+  onAction?: (action: ActionPayload) => Promise<boolean> | void;
 }
 
 export interface TaskListProps {
@@ -108,7 +124,7 @@ export interface TaskListProps {
     status: 'todo' | 'in_progress' | 'done';
     dueDate?: string;
   }>;
-  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+  onAction?: (action: ActionPayload) => Promise<boolean> | void;
 }
 
 export interface MeetingCardProps {
@@ -141,7 +157,7 @@ export interface ActionButtonProps {
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   isLoading?: boolean;
-  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+  onAction?: (action: ActionPayload) => Promise<boolean> | void;
 }
 
 export interface TextProps {
@@ -383,6 +399,7 @@ export const EmailPreview = React.memo(function EmailPreview({ subject, from, to
 export const TaskItem = React.memo(function TaskItem({ id, title, description, status: serverStatus, dueDate, onAction }: TaskItemProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [localStatus, setLocalStatus] = useState<string | null>(null);
+  const [showError, setShowError] = useState(false);
   const status = localStatus ?? serverStatus;
 
   const statusStyles = {
@@ -394,17 +411,24 @@ export const TaskItem = React.memo(function TaskItem({ id, title, description, s
 
   const formattedDate = dueDate ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     if (!onAction) return;
     setIsAnimating(true);
+    setShowError(false);
     setTimeout(() => setIsAnimating(false), 300);
-    const newStatus = status === 'done' ? 'todo' : 'done';
+    const currentStatus = localStatus ?? serverStatus; // Use effective current status
+    const newStatus = currentStatus === 'done' ? 'todo' : 'done';
     setLocalStatus(newStatus);
-    onAction({ name: 'update_task_status', params: { taskId: id, status: newStatus } });
+    const result = await onAction({ name: 'update_task_status', params: { taskId: id, status: newStatus } });
+    if (result === false) {
+      setLocalStatus(currentStatus === serverStatus ? null : currentStatus); // Rollback properly
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000); // Auto-dismiss after 3s
+    }
   };
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-all duration-200 ${status === 'done' ? 'opacity-75' : ''}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-all duration-200 ${status === 'done' ? 'opacity-75' : ''} ${showError ? 'animate-shake border-red-300' : ''}`}>
       <div className="flex items-start gap-3">
         <button
           onClick={handleToggle}
@@ -424,6 +448,7 @@ export const TaskItem = React.memo(function TaskItem({ id, title, description, s
           </div>
           {description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{description}</p>}
           {formattedDate && <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><CalendarIcon className="w-3 h-3" />Due {formattedDate}</p>}
+          {showError && <p className="text-[11px] text-red-500 mt-1">Failed to update. Please try again.</p>}
         </div>
       </div>
     </div>
@@ -436,22 +461,30 @@ function TaskListRow({
   isLast,
 }: {
   task: { id: number; title: string; description?: string; status: string; dueDate?: string };
-  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+  onAction?: (action: ActionPayload) => Promise<boolean> | void;
   isLast: boolean;
 }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [localStatus, setLocalStatus] = useState<string | null>(null);
+  const [showError, setShowError] = useState(false);
   const status = localStatus ?? task.status;
   const isDone = status === 'done';
   const isInProgress = status === 'in_progress';
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     if (!onAction) return;
     setIsAnimating(true);
+    setShowError(false);
     setTimeout(() => setIsAnimating(false), 300);
-    const newStatus = isDone ? 'todo' : 'done';
+    const currentStatus = localStatus ?? task.status; // Use effective current status
+    const newStatus = currentStatus === 'done' ? 'todo' : 'done';
     setLocalStatus(newStatus);
-    onAction({ name: 'update_task_status', params: { taskId: task.id, status: newStatus } });
+    const result = await onAction({ name: 'update_task_status', params: { taskId: task.id, status: newStatus } });
+    if (result === false) {
+      setLocalStatus(currentStatus === task.status ? null : currentStatus); // Rollback properly
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000); // Auto-dismiss after 3s
+    }
   };
 
   const formattedDate = task.dueDate
@@ -459,7 +492,7 @@ function TaskListRow({
     : '';
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 transition-colors duration-100 hover:bg-gray-50 group ${!isLast ? 'border-b border-gray-100' : ''} ${isDone ? 'bg-gray-50/50' : ''}`}>
+    <div className={`flex items-center gap-3 px-4 py-3 transition-colors duration-100 hover:bg-gray-50 group ${!isLast ? 'border-b border-gray-100' : ''} ${isDone ? 'bg-gray-50/50' : ''} ${showError ? 'bg-red-50' : ''}`}>
       <button
         onClick={handleToggle}
         className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
@@ -474,7 +507,10 @@ function TaskListRow({
         {isDone && <CheckCircleIcon className="w-2.5 h-2.5" />}
         {isInProgress && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
       </button>
-      <span className={`flex-1 text-[13px] truncate transition-all ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</span>
+      <span className={`flex-1 text-[13px] truncate transition-all ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+        {task.title}
+        {showError && <span className="text-red-500 ml-2 text-[11px]">Update failed</span>}
+      </span>
       {isInProgress && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">In Progress</span>}
       {formattedDate && !isDone && (
         <span className="text-[11px] text-gray-400 flex-shrink-0 flex items-center gap-1">
@@ -726,14 +762,16 @@ export const Badge = React.memo(function Badge({ label, variant = 'default' }: B
 
 // ── Layout helpers for rendering tool results ───────────────────────
 
+// Component type categories for layout inference
+const COMPACT_TYPES = ['MetricCard', 'ContactCard', 'Badge'];
+const FULL_WIDTH_TYPES = ['OpportunityCard', 'DataTable', 'TaskList'];
+
 // Infer the best layout for a section based on component types
 function inferLayout(components: Array<Record<string, unknown>>): string {
   const types = components.map(c => String(c.type || ''));
-  const compactTypes = ['MetricCard', 'ContactCard', 'Badge'];
-  const fullWidthTypes = ['OpportunityCard', 'DataTable', 'TaskList'];
 
-  if (types.every(t => compactTypes.includes(t))) return 'grid-3';
-  if (types.every(t => fullWidthTypes.includes(t))) return 'full-width';
+  if (types.every(t => COMPACT_TYPES.includes(t))) return 'grid-3';
+  if (types.every(t => FULL_WIDTH_TYPES.includes(t))) return 'full-width';
   return 'grid-2';
 }
 
@@ -751,13 +789,23 @@ const layoutStyles: Record<string, React.CSSProperties> = {
   'stack': {},
 };
 
-// Action handler that forwards to the API
-async function handleAction(action: { name: string; params: Record<string, unknown> }) {
-  await fetch('/api/actions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: action.name, params: action.params }),
-  });
+// Action handler that forwards to the API and returns success/failure for rollback
+async function handleAction(action: ActionPayload): Promise<boolean> {
+  try {
+    const response = await fetch('/api/actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action.name, params: action.params }),
+    });
+    if (!response.ok) {
+      console.error(`Action failed: ${response.status} ${response.statusText}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Action request failed:', error);
+    return false;
+  }
 }
 
 // Render a single component from tool output data
@@ -776,13 +824,35 @@ export function renderComponent(comp: Record<string, unknown>, key: number | str
     case 'DataTable': return <DataTable key={key} columns={comp.columns as DataTableProps['columns']} rows={comp.rows as DataTableProps['rows']} emptyMessage={comp.emptyMessage as string} />;
     case 'Badge': return <Badge key={key} label={comp.label as string} variant={comp.variant as BadgeProps['variant']} />;
     case 'ActionButton': return <ActionButton key={key} label={comp.label as string} actionName={comp.actionName as string} actionParams={comp.actionParams as Record<string, unknown>} variant={comp.variant as ActionButtonProps['variant']} onAction={handleAction} />;
-    default: return null;
+    case 'Text': return <TextComponent key={key} content={comp.content as string} variant={comp.variant as TextProps['variant']} color={comp.color as TextProps['color']} />;
+    default:
+      console.error(`Unknown component type: ${type}`);
+      return (
+        <div key={key} className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+          Unknown component: {type}
+        </div>
+      );
   }
 }
 
-// Render a dashboard section
+// Correct layout based on actual component types (enforces layout rules)
+function correctLayout(layout: string, components: Array<Record<string, unknown>>): string {
+  const types = components.map(c => String(c.type || ''));
+  const hasFullWidthType = types.some(t => FULL_WIDTH_TYPES.includes(t));
+  const allCompact = types.every(t => COMPACT_TYPES.includes(t));
+
+  // Full-width types always force full-width layout
+  if (hasFullWidthType) return 'full-width';
+
+  // grid-3 only allowed for compact types
+  if (layout === 'grid-3' && !allCompact) return 'grid-2';
+
+  return layout;
+}
+
 export function DashboardSection({ section }: { section: { heading?: string; layout?: string; components: Array<Record<string, unknown>> } }) {
-  const layout = section.layout || inferLayout(section.components);
+  const rawLayout = section.layout || inferLayout(section.components);
+  const layout = correctLayout(rawLayout, section.components);
   return (
     <div>
       {section.heading && <p className="text-base font-bold text-gray-900 mb-2">{section.heading}</p>}

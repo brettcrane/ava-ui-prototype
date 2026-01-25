@@ -43,12 +43,16 @@ const SUGGESTED_PROMPTS = [
   'I want to add a new task',
 ];
 
+const chatTransport = new DefaultChatTransport({ api: '/api/generate' });
+
 export function ChatInterface() {
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<number | null>(null);
   const [showChatMenu, setShowChatMenu] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const {
     messages,
@@ -57,11 +61,10 @@ export function ChatInterface() {
     status,
     error,
   } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/generate' }),
+    transport: chatTransport,
     experimental_throttle: 50,
     onFinish: () => {
-      // Auto-save when response completes
-      saveChat();
+      saveChatRef.current?.();
     },
   });
 
@@ -78,12 +81,14 @@ export function ChatInterface() {
   const loadSavedChats = useCallback(async () => {
     try {
       const response = await fetch('/api/chats');
-      if (response.ok) {
-        const chats = await response.json();
-        setSavedChats(chats);
+      if (!response.ok) {
+        console.error(`Failed to load chats: ${response.status} ${response.statusText}`);
+        return;
       }
-    } catch {
-      console.error('Failed to load chats');
+      const chats = await response.json();
+      setSavedChats(chats);
+    } catch (error) {
+      console.error('Failed to load chats:', error);
     }
   }, []);
 
@@ -125,40 +130,66 @@ export function ChatInterface() {
         }
       }
       await loadSavedChats();
-    } catch {
-      // Silent fail for auto-save
+    } catch (error) {
+      console.warn('Auto-save failed:', error);
     }
   }, [messages, currentChatId, loadSavedChats]);
+
+  // Keep ref in sync for onFinish callback
+  useEffect(() => {
+    saveChatRef.current = saveChat;
+  }, [saveChat]);
 
   const loadChat = async (chatId: number) => {
     try {
       const response = await fetch(`/api/chats/${chatId}`);
-      if (response.ok) {
-        const chat = await response.json();
-        const loadedMessages = JSON.parse(chat.messages_json).map((m: Record<string, unknown>) => ({
-          ...m,
-          createdAt: m.createdAt ? new Date(m.createdAt as string) : new Date(),
-        }));
-        setMessages(loadedMessages);
-        setCurrentChatId(chatId);
-        setShowChatMenu(false);
+      if (!response.ok) {
+        console.error(`Failed to load chat ${chatId}: ${response.status} ${response.statusText}`);
+        setOperationError('Failed to load chat. Please try again.');
+        return;
       }
-    } catch {
-      console.error('Failed to load chat');
+      const chat = await response.json();
+      const loadedMessages = JSON.parse(chat.messages_json).map((m: Record<string, unknown>) => {
+        // Validate/migrate message structure: old format used content, new uses parts
+        const parts = Array.isArray(m.parts) ? m.parts :
+          typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : [];
+        return {
+          ...m,
+          parts,
+          createdAt: m.createdAt ? new Date(m.createdAt as string) : new Date(),
+        };
+      });
+      setMessages(loadedMessages);
+      setCurrentChatId(chatId);
+      setShowChatMenu(false);
+      setOperationError(null);
+    } catch (error) {
+      console.error(`Failed to load chat ${chatId}:`, error);
+      const message = error instanceof SyntaxError
+        ? 'Chat data appears corrupted'
+        : 'Failed to load chat. Please check your connection.';
+      setOperationError(message);
     }
   };
 
   const deleteChatById = async (chatId: number) => {
     if (!confirm('Delete this chat?')) return;
     try {
-      await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        console.error(`Failed to delete chat ${chatId}: ${response.status} ${response.statusText}`);
+        setOperationError('Failed to delete chat. Please try again.');
+        return;
+      }
       await loadSavedChats();
       if (currentChatId === chatId) {
         setMessages([]);
         setCurrentChatId(null);
       }
-    } catch {
-      console.error('Failed to delete chat');
+      setOperationError(null);
+    } catch (error) {
+      console.error(`Failed to delete chat ${chatId}:`, error);
+      setOperationError('Failed to delete chat. Please try again.');
     }
   };
 
@@ -166,6 +197,7 @@ export function ChatInterface() {
     setMessages([]);
     setCurrentChatId(null);
     setShowChatMenu(false);
+    setOperationError(null);
   };
 
   const handleSend = useCallback((text: string) => {
@@ -296,9 +328,14 @@ export function ChatInterface() {
       </div>
 
       {/* Error display */}
-      {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200">
-          <p className="text-sm text-red-600">{error.message}</p>
+      {(error || operationError) && (
+        <div className="px-4 py-2 bg-red-50 border-t border-red-200 flex items-center justify-between">
+          <p className="text-sm text-red-600">{error?.message || operationError}</p>
+          {operationError && (
+            <button onClick={() => setOperationError(null)} className="text-xs text-red-500 hover:text-red-700 underline ml-2">
+              Dismiss
+            </button>
+          )}
         </div>
       )}
 

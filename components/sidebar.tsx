@@ -46,6 +46,7 @@ export function Sidebar() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSidebarData();
@@ -60,12 +61,17 @@ export function Sidebar() {
   const fetchSidebarData = async () => {
     try {
       const response = await fetch('/api/sidebar');
-      if (response.ok) {
-        const result = await response.json();
-        setData(result);
+      if (!response.ok) {
+        console.error(`Failed to load sidebar: ${response.status} ${response.statusText}`);
+        setSidebarError('Failed to load sidebar data');
+        return;
       }
-    } catch {
-      // Fallback to empty data
+      const result = await response.json();
+      setData(result);
+      setSidebarError(null);
+    } catch (error) {
+      console.error('Failed to load sidebar:', error);
+      setSidebarError('Failed to load sidebar data');
     } finally {
       setLoading(false);
     }
@@ -75,6 +81,7 @@ export function Sidebar() {
     if (updatingTaskId) return;
 
     setUpdatingTaskId(taskId);
+    setSidebarError(null);
     const newStatus = currentStatus === 'done' ? 'todo' : 'done';
 
     try {
@@ -84,20 +91,25 @@ export function Sidebar() {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (response.ok) {
-        const updatedTask = await response.json();
-        setData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            tasks: prev.tasks.map((t) =>
-              t.id === taskId ? { ...t, status: updatedTask.status } : t
-            ),
-          };
-        });
+      if (!response.ok) {
+        console.error(`Failed to update task: ${response.status} ${response.statusText}`);
+        setSidebarError('Failed to update task');
+        return;
       }
-    } catch {
-      // Silently fail
+
+      const updatedTask = await response.json();
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId ? { ...t, status: updatedTask.status } : t
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('Failed to update task:', error);
+      setSidebarError('Failed to update task');
     } finally {
       setUpdatingTaskId(null);
     }
@@ -107,6 +119,7 @@ export function Sidebar() {
     if (!newTaskTitle.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
+    setSidebarError(null);
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST',
@@ -114,21 +127,26 @@ export function Sidebar() {
         body: JSON.stringify({ title: newTaskTitle.trim() }),
       });
 
-      if (response.ok) {
-        const newTask = await response.json();
-        setData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            tasks: [...prev.tasks, { ...newTask, status: 'todo' }],
-          };
-        });
-        setNewTaskTitle('');
-        setIsAddingTask(false);
-        setTaskTab('open'); // Switch to open tab to show new task
+      if (!response.ok) {
+        console.error(`Failed to add task: ${response.status} ${response.statusText}`);
+        setSidebarError('Failed to add task');
+        return;
       }
-    } catch {
-      // Silently fail
+
+      const newTask = await response.json();
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tasks: [...prev.tasks, { ...newTask, status: 'todo' }],
+        };
+      });
+      setNewTaskTitle('');
+      setIsAddingTask(false);
+      setTaskTab('open'); // Switch to open tab to show new task
+    } catch (error) {
+      console.error('Failed to add task:', error);
+      setSidebarError('Failed to add task');
     } finally {
       setIsSubmitting(false);
     }
@@ -179,6 +197,19 @@ export function Sidebar() {
 
   return (
     <div className="w-80 border-l border-gray-200 bg-white flex flex-col">
+      {/* Error display */}
+      {sidebarError && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 flex items-center justify-between">
+          <p className="text-sm text-red-600">{sidebarError}</p>
+          <button
+            onClick={() => setSidebarError(null)}
+            className="text-xs text-red-500 hover:text-red-700 underline ml-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center gap-2">

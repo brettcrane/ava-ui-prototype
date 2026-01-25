@@ -1,21 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Markdown from 'react-markdown';
 import type { UIMessage } from '@ai-sdk/react';
 import {
-  ContactCard,
-  OpportunityCard,
-  MetricCard,
-  EmailPreview,
-  TaskList,
-  MeetingCard,
-  FileCard,
-  MemoryCard,
-  InfoCard,
-  DataTable,
+  renderComponent,
   DashboardSection,
 } from './ava-components';
+
+// Tool part states from AI SDK
+type ToolState = 'output-available' | 'input-streaming' | 'input-available' | 'output-error' | 'output-denied';
 
 interface ChatMessageProps {
   message: UIMessage;
@@ -53,103 +47,106 @@ function GeneratingUIIndicator() {
   );
 }
 
-// Render tool result as a UI component
-function ToolResultRenderer({ toolName, output }: { toolName: string; output: Record<string, unknown> }) {
+// Tool error indicator
+function ToolErrorIndicator() {
+  return (
+    <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+      Failed to generate component. Please try again.
+    </div>
+  );
+}
+
+// Validation error for tool results
+function ValidationError({ what }: { what: string }) {
+  return (
+    <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+      Unable to display {what}
+    </div>
+  );
+}
+
+// Helper to validate array data from tool output
+function validateArrayField(output: Record<string, unknown>, field: string, toolName: string): unknown[] | null {
+  const data = output[field];
+  if (!Array.isArray(data)) {
+    console.error(`${toolName}: expected ${field} array, got:`, typeof data);
+    return null;
+  }
+  return data;
+}
+
+// Render tool result as a UI component — delegates to renderComponent/DashboardSection
+function ToolResultRenderer({ toolName, result }: { toolName: string; result: unknown }) {
+  const output = result as Record<string, unknown>;
+
   switch (toolName) {
     case 'show_dashboard': {
-      const sections = output.sections as Array<{ heading?: string; layout?: string; components: Array<Record<string, unknown>> }>;
+      const sections = validateArrayField(output, 'sections', toolName);
+      if (!sections) return <ValidationError what="dashboard" />;
       return (
         <div className="flex flex-col gap-4">
-          {sections.map((section, i) => (
-            <DashboardSection key={i} section={section} />
-          ))}
+          {sections.map((section, i) => {
+            const s = section as { heading?: string; layout?: string; components?: unknown[] };
+            return <DashboardSection key={i} section={{ ...s, components: Array.isArray(s.components) ? s.components as Record<string, unknown>[] : [] }} />;
+          })}
         </div>
       );
     }
     case 'show_contacts': {
-      const contacts = output.contacts as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          {contacts.map((c, i) => (
-            <ContactCard key={i} name={c.name as string} title={c.title as string} email={c.email as string} phone={c.phone as string} isPrimary={c.isPrimary as boolean} />
-          ))}
-        </div>
-      );
+      const contacts = validateArrayField(output, 'contacts', toolName);
+      if (!contacts) return <ValidationError what="contacts" />;
+      return <DashboardSection section={{ components: contacts.map((c) => ({ ...(c as Record<string, unknown>), type: 'ContactCard' })) }} />;
     }
     case 'show_opportunity':
-      return <OpportunityCard name={output.name as string} amount={output.amount as number} stage={output.stage as string} closeDate={output.closeDate as string} probability={output.probability as number} />;
+      return renderComponent({ ...output, type: 'OpportunityCard' }, 0);
     case 'show_metrics': {
-      const metrics = output.metrics as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          {metrics.map((m, i) => (
-            <MetricCard key={i} label={m.label as string} value={m.value as string | number} format={m.format as 'currency' | 'number' | 'percent'} trend={m.trend as 'up' | 'down' | 'neutral'} change={m.change as string} />
-          ))}
-        </div>
-      );
+      const metrics = validateArrayField(output, 'metrics', toolName);
+      if (!metrics) return <ValidationError what="metrics" />;
+      return <DashboardSection section={{ components: metrics.map((m) => ({ ...(m as Record<string, unknown>), type: 'MetricCard' })) }} />;
     }
     case 'show_emails': {
-      const emails = output.emails as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          {emails.map((e, i) => (
-            <EmailPreview key={i} subject={e.subject as string} from={e.from as string} to={e.to as string} body={e.body as string} date={e.date as string} direction={e.direction as 'inbound' | 'outbound'} />
-          ))}
-        </div>
-      );
+      const emails = validateArrayField(output, 'emails', toolName);
+      if (!emails) return <ValidationError what="emails" />;
+      return <DashboardSection section={{ components: emails.map((e) => ({ ...(e as Record<string, unknown>), type: 'EmailPreview' })) }} />;
     }
     case 'show_tasks': {
-      const tasks = output.tasks as Array<{ id: number; title: string; description?: string; status: 'todo' | 'in_progress' | 'done'; dueDate?: string }>;
-      const handleAction = async (action: { name: string; params: Record<string, unknown> }) => {
-        await fetch('/api/actions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: action.name, params: action.params }),
-        });
-      };
-      return <TaskList tasks={tasks} onAction={handleAction} />;
+      const tasks = validateArrayField(output, 'tasks', toolName);
+      if (!tasks) return <ValidationError what="tasks" />;
+      return renderComponent({ type: 'TaskList', tasks }, 0);
     }
     case 'show_meetings': {
-      const meetings = output.meetings as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          {meetings.map((m, i) => (
-            <MeetingCard key={i} title={m.title as string} date={m.date as string} time={m.time as string} attendees={m.attendees as string[]} meetingType={m.meetingType as string} />
-          ))}
-        </div>
-      );
+      const meetings = validateArrayField(output, 'meetings', toolName);
+      if (!meetings) return <ValidationError what="meetings" />;
+      return <DashboardSection section={{ components: meetings.map((m) => ({ ...(m as Record<string, unknown>), type: 'MeetingCard' })) }} />;
     }
     case 'show_files': {
-      const files = output.files as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          {files.map((f, i) => (
-            <FileCard key={i} name={f.name as string} fileType={f.fileType as string} description={f.description as string} summary={f.summary as string} />
-          ))}
-        </div>
-      );
+      const files = validateArrayField(output, 'files', toolName);
+      if (!files) return <ValidationError what="files" />;
+      return <DashboardSection section={{ components: files.map((f) => ({ ...(f as Record<string, unknown>), type: 'FileCard' })) }} />;
     }
     case 'show_memories': {
-      const memories = output.memories as Array<Record<string, unknown>>;
-      return (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          {memories.map((m, i) => (
-            <MemoryCard key={i} category={m.category as string} content={m.content as string} contact={m.contact as string} confidence={m.confidence as 'high' | 'medium' | 'low'} />
-          ))}
-        </div>
-      );
+      const memories = validateArrayField(output, 'memories', toolName);
+      if (!memories) return <ValidationError what="memories" />;
+      return <DashboardSection section={{ components: memories.map((m) => ({ ...(m as Record<string, unknown>), type: 'MemoryCard' })) }} />;
     }
     case 'show_info':
-      return <InfoCard title={output.title as string} content={output.content as string} variant={output.variant as 'default' | 'success' | 'warning' | 'error'} />;
+      return renderComponent({ ...output, type: 'InfoCard' }, 0);
     case 'show_table':
-      return <DataTable columns={output.columns as Array<{ key: string; label: string }>} rows={output.rows as Array<Record<string, unknown>>} emptyMessage={output.emptyMessage as string} />;
+      return renderComponent({ ...output, type: 'DataTable' }, 0);
     default:
-      return null;
+      console.error(`Unknown tool: ${toolName}`);
+      return <ValidationError what={toolName} />;
   }
 }
 
 export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  // Prefer message.createdAt for restored chats, fallback to render time for new messages
+  const [timestamp] = useState(() =>
+    ('createdAt' in message && message.createdAt instanceof Date)
+      ? message.createdAt
+      : new Date()
+  );
 
   // Check if any text content exists
   const textParts = message.parts.filter(p => p.type === 'text' && p.text.trim());
@@ -158,7 +155,7 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMess
   // Check for tool parts
   const toolParts = message.parts.filter(p => p.type.startsWith('tool-'));
   const hasToolResults = toolParts.some(p => 'state' in p && p.state === 'output-available');
-  const hasToolPending = toolParts.some(p => 'state' in p && (p.state === 'streaming' || p.state === 'input-available'));
+  const hasToolPending = toolParts.some(p => 'state' in p && (p.state === 'input-streaming' || p.state === 'input-available'));
 
   // Is still streaming (no text content yet for assistant)
   const isThinking = !isUser && !hasContent && !hasToolResults && !hasToolPending;
@@ -225,18 +222,24 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMess
           // Tool parts - render UI components
           if (part.type.startsWith('tool-')) {
             const toolName = part.type.replace('tool-', '');
+            const toolPart = part as { state?: ToolState; output?: unknown };
 
-            if ('state' in part && part.state === 'output-available' && 'output' in part) {
+            if (toolPart.state === 'output-available' && toolPart.output != null) {
               return (
                 <div key={index} className="mt-3">
-                  <ToolResultRenderer toolName={toolName} output={part.output as Record<string, unknown>} />
+                  <ToolResultRenderer toolName={toolName} result={toolPart.output} />
                 </div>
               );
             }
 
             // Tool is still executing - show loading
-            if ('state' in part && (part.state === 'streaming' || part.state === 'input-available')) {
+            if (toolPart.state === 'input-streaming' || toolPart.state === 'input-available') {
               return <GeneratingUIIndicator key={index} />;
+            }
+
+            // Tool failed - show error
+            if (toolPart.state === 'output-error' || toolPart.state === 'output-denied') {
+              return <ToolErrorIndicator key={index} />;
             }
           }
 
@@ -245,7 +248,7 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMess
 
         {/* Timestamp */}
         <p className={`text-[11px] text-gray-400 mt-1.5 ${isUser ? 'text-right' : 'text-left'}`}>
-          {formatTime(new Date())}
+          {formatTime(timestamp)}
         </p>
       </div>
     </div>

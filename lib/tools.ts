@@ -19,13 +19,13 @@ const columnSchema = z.object({
 // ── Component schema for dashboard sections ─────────────────────────
 
 const componentSchema = z.object({
-  type: z.string(),
+  type: z.enum(['InfoCard', 'MetricCard', 'ContactCard', 'OpportunityCard', 'EmailPreview', 'TaskList', 'MeetingCard', 'FileCard', 'MemoryCard', 'DataTable', 'Badge', 'ActionButton', 'Text']),
   // All possible props flattened — Claude picks the right ones per type
   title: z.string().optional(),
   content: z.string().optional(),
   variant: z.string().optional(),
   label: z.string().optional(),
-  value: z.string().optional(),
+  value: z.union([z.string(), z.number()]).optional(),
   format: z.string().optional(),
   trend: z.string().optional(),
   change: z.string().optional(),
@@ -116,7 +116,7 @@ If layout is omitted, it defaults based on component types automatically.`,
     parameters: z.object({
       metrics: z.array(z.object({
         label: z.string(),
-        value: z.string(),
+        value: z.union([z.string(), z.number()]),
         format: z.string().optional(),
         trend: z.string().optional(),
         change: z.string().optional(),
