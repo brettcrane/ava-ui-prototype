@@ -267,12 +267,12 @@ export function Sidebar() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <ClipboardDocumentListIcon className="w-5 h-5 text-purple-700" />
-              <h2 className="font-semibold text-gray-900">Todos</h2>
+              <h2 className="font-semibold text-gray-900">Tasks</h2>
             </div>
             <button
               onClick={() => setIsAddingTask(true)}
               className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
-              title="Add todo"
+              title="Add task"
             >
               <PlusIcon className="w-4 h-4" />
             </button>

@@ -1,9 +1,10 @@
 'use client';
 
-import { Renderer } from '@json-render/react';
+import { Renderer, ActionProvider } from '@json-render/react';
 import Markdown from 'react-markdown';
 import { componentRegistry } from './ava-components';
 import type { UITree } from '@json-render/core';
+import { useMemo } from 'react';
 
 interface Message {
   id: string;
@@ -58,6 +59,28 @@ export function ChatMessage({ message }: ChatMessageProps) {
   // Show loader until we have actual renderable elements (not just a root key)
   const hasRenderableUI = message.ui?.root && message.ui.elements && Object.keys(message.ui.elements).length > 0;
   const showGeneratingIndicator = message.isGeneratingUI && !hasRenderableUI;
+
+  // Action handlers keyed by name — each forwards to the API
+  const actionHandlers = useMemo(() => {
+    const actionNames = [
+      'complete_task', 'update_task_status', 'create_task', 'delete_task',
+      'create_contact', 'delete_contact',
+      'update_opportunity_stage', 'update_close_date',
+      'save_memory', 'draft_email', 'schedule_meeting',
+    ] as const;
+
+    const handlers: Record<string, (params: Record<string, unknown>) => Promise<void>> = {};
+    for (const name of actionNames) {
+      handlers[name] = async (params) => {
+        await fetch('/api/actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: name, params }),
+        });
+      };
+    }
+    return handlers;
+  }, []);
 
   // For assistant messages that are still thinking (no content yet), show thinking indicator
   if (!isUser && isThinking) {
@@ -127,10 +150,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {/* UI components (only for assistant messages) */}
         {!isUser && message.ui && (
           <div className="mt-3">
-            <Renderer
-              tree={message.ui}
-              registry={componentRegistry}
-            />
+            <ActionProvider handlers={actionHandlers}>
+              <Renderer
+                tree={message.ui}
+                registry={componentRegistry}
+              />
+            </ActionProvider>
           </div>
         )}
 

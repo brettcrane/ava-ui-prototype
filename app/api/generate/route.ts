@@ -30,9 +30,10 @@ AVAILABLE COMPONENTS:
 - OpportunityCard: { name: string, amount: number, stage: string, closeDate: string, probability?: number }
 - EmailPreview: { subject: string, from?: string, to?: string, body: string, date?: string, direction?: 'inbound'|'outbound' }
 - TaskItem: { id: number, title: string, description?: string, status: 'todo'|'in_progress'|'done', dueDate?: string }
+- TaskList: { tasks: [{ id: number, title: string, description?: string, status: 'todo'|'in_progress'|'done', dueDate?: string }] } — compact checklist, preferred over individual TaskItem cards
 - MeetingCard: { title: string, date: string, time?: string, attendees?: string[], meetingType?: string }
 - FileCard: { name: string, fileType: string, description?: string, summary?: string }
-- MemoryCard: { category: string, content: string, contact?: string, confidence?: number }
+- MemoryCard: { category: string, content: string, contact?: string, confidence?: 'high'|'medium'|'low' }
 - ActionButton: { label: string, action: {name: string, params?: {}}, variant?: 'primary'|'secondary'|'danger'|'outline' }
 - Stack: { direction?: 'vertical'|'horizontal', gap?: 'none'|'sm'|'md'|'lg' } (container with children array)
 - Grid: { columns?: number, gap?: 'none'|'sm'|'md'|'lg' } (container with children array)
@@ -48,11 +49,13 @@ RULES:
 6. Use unique keys for each element (e.g., "main-stack", "contact-1", "metric-amount")
 
 LAYOUT RULES (IMPORTANT):
-- The UI renders inside a chat message column (~650-800px wide). Do NOT use Grid with columns=3 or columns=4 for content cards — they will be cramped. Use columns=2 max for cards.
-- Grid columns=3 is ONLY ok for small items like MetricCards or Badges.
-- For dashboards with many sections, use a single root Stack(vertical) and group related items into labeled sections using Text(heading) + Grid(columns=2) or Stack.
+- The UI renders inside a chat message column (~650-800px wide).
+- Grid columns=3 is ONLY ok for MetricCards and ContactCards — they are compact enough.
+- ALWAYS use Grid(columns=2) for MemoryCards, EmailPreviews, MeetingCards, and FileCards. These need more horizontal space — never put them in a 3-column grid.
+- OpportunityCard should be full-width (not in a grid) since it displays dense deal data.
+- For task lists, use a single TaskList component (not individual TaskItem cards in a grid). TaskList renders a compact checklist.
+- For dashboards with many sections, use a single root Stack(vertical) and group related items into labeled sections using Text(heading) + Grid or Stack.
 - NEVER nest a Grid inside another Grid. Keep layouts flat: root Stack > section heading > Grid of cards.
-- OpportunityCard, MeetingCard, ContactCard, and EmailPreview should NEVER be in a 3-column grid — they need at least 280px width each.
 
 EXAMPLE for showing a contact:
 ---UI---
@@ -60,15 +63,19 @@ EXAMPLE for showing a contact:
 {"op":"add","path":"/elements/main-stack","value":{"key":"main-stack","type":"Stack","props":{"direction":"vertical","gap":"md"},"children":["contact-sarah"]}}
 {"op":"add","path":"/elements/contact-sarah","value":{"key":"contact-sarah","type":"ContactCard","props":{"name":"Sarah Chen","title":"VP Engineering","email":"sarah@example.com","isPrimary":true}}}
 
-EXAMPLE for a dashboard with multiple sections:
+EXAMPLE for a dashboard with multiple sections (note the column counts):
 ---UI---
 {"op":"set","path":"/root","value":"dashboard"}
-{"op":"add","path":"/elements/dashboard","value":{"key":"dashboard","type":"Stack","props":{"direction":"vertical","gap":"lg"},"children":["opp-1","metrics-heading","metrics-grid","contacts-heading","contacts-grid","meetings-heading","meetings-stack"]}}
+{"op":"add","path":"/elements/dashboard","value":{"key":"dashboard","type":"Stack","props":{"direction":"vertical","gap":"lg"},"children":["opp-1","metrics-heading","metrics-grid","contacts-heading","contacts-grid","insights-heading","insights-grid","tasks-heading","task-list-1"]}}
 {"op":"add","path":"/elements/opp-1","value":{"key":"opp-1","type":"OpportunityCard","props":{"name":"Deal Name","amount":100000,"stage":"negotiation","closeDate":"2025-03-01","probability":75}}}
 {"op":"add","path":"/elements/metrics-heading","value":{"key":"metrics-heading","type":"Text","props":{"content":"Key Metrics","variant":"heading"}}}
 {"op":"add","path":"/elements/metrics-grid","value":{"key":"metrics-grid","type":"Grid","props":{"columns":3,"gap":"md"},"children":["m1","m2","m3"]}}
 {"op":"add","path":"/elements/contacts-heading","value":{"key":"contacts-heading","type":"Text","props":{"content":"Key Contacts","variant":"heading"}}}
-{"op":"add","path":"/elements/contacts-grid","value":{"key":"contacts-grid","type":"Grid","props":{"columns":2,"gap":"md"},"children":["c1","c2"]}}
+{"op":"add","path":"/elements/contacts-grid","value":{"key":"contacts-grid","type":"Grid","props":{"columns":3,"gap":"md"},"children":["c1","c2","c3"]}}
+{"op":"add","path":"/elements/insights-heading","value":{"key":"insights-heading","type":"Text","props":{"content":"Stakeholder Insights","variant":"heading"}}}
+{"op":"add","path":"/elements/insights-grid","value":{"key":"insights-grid","type":"Grid","props":{"columns":2,"gap":"md"},"children":["mem1","mem2","mem3","mem4"]}}
+{"op":"add","path":"/elements/tasks-heading","value":{"key":"tasks-heading","type":"Text","props":{"content":"Open Tasks","variant":"heading"}}}
+{"op":"add","path":"/elements/task-list-1","value":{"key":"task-list-1","type":"TaskList","props":{"tasks":[{"id":1,"title":"Send proposal","status":"todo","dueDate":"2025-06-15"},{"id":2,"title":"Technical review","status":"in_progress"}]}}}
 
 ## Guidelines
 
@@ -128,6 +135,51 @@ interface Message {
   content: string;
 }
 
+interface JsonPatch {
+  op: string;
+  path: string;
+  value?: unknown;
+}
+
+type ElementMap = Record<string, { type?: string; props?: Record<string, unknown>; children?: string[]; key?: string }>;
+
+// Compute correction patches for Grid elements with wrong column counts
+function computeLayoutCorrections(elements: ElementMap): JsonPatch[] {
+  const twoColTypes = new Set(['MemoryCard', 'EmailPreview', 'MeetingCard', 'FileCard']);
+  const threeColTypes = new Set(['MetricCard', 'ContactCard', 'Badge']);
+  const corrections: JsonPatch[] = [];
+
+  for (const [key, el] of Object.entries(elements)) {
+    if (el.type === 'Grid' && el.children && el.children.length > 0) {
+      const childTypes = el.children
+        .map((ck: string) => elements[ck]?.type)
+        .filter(Boolean) as string[];
+
+      if (childTypes.length === 0) continue;
+
+      let correctColumns: number;
+      if (childTypes.every(t => threeColTypes.has(t))) {
+        correctColumns = 3;
+      } else if (childTypes.every(t => twoColTypes.has(t))) {
+        correctColumns = 2;
+      } else {
+        correctColumns = 2; // Mixed or unknown — safe default
+      }
+
+      const currentColumns = el.props?.columns;
+      if (currentColumns !== correctColumns) {
+        corrections.push({
+          op: 'add',
+          path: `/elements/${key}`,
+          value: { ...el, props: { ...el.props, columns: correctColumns } },
+        });
+      }
+    }
+  }
+
+  return corrections;
+}
+
 export async function POST(request: Request) {
   try {
     const { messages } = await request.json() as { messages: Message[] };
@@ -178,6 +230,16 @@ Remember: Respond with TEXT first, then ---UI--- delimiter, then JSONL patches.`
         let inUISection = false;
         let fullText = '';
         let lastSentLength = 0;
+        const elements: ElementMap = {};
+
+        // Send patch to client and track element for layout corrections
+        async function sendAndTrack(patch: JsonPatch) {
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'patch', patch })}\n\n`));
+          if (patch.op === 'add' && typeof patch.path === 'string' && patch.path.startsWith('/elements/')) {
+            const key = patch.path.replace('/elements/', '');
+            elements[key] = patch.value as ElementMap[string];
+          }
+        }
 
         for await (const event of response) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
@@ -210,7 +272,7 @@ Remember: Respond with TEXT first, then ---UI--- delimiter, then JSONL patches.`
                 if (trimmed && trimmed.startsWith('{')) {
                   try {
                     const patch = JSON.parse(trimmed);
-                    await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'patch', patch })}\n\n`));
+                    await sendAndTrack(patch);
                   } catch {
                     // Skip invalid JSON
                   }
@@ -228,7 +290,7 @@ Remember: Respond with TEXT first, then ---UI--- delimiter, then JSONL patches.`
                 if (trimmed && trimmed.startsWith('{')) {
                   try {
                     const patch = JSON.parse(trimmed);
-                    await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'patch', patch })}\n\n`));
+                    await sendAndTrack(patch);
                   } catch {
                     // Skip invalid JSON
                   }
@@ -267,20 +329,34 @@ Remember: Respond with TEXT first, then ---UI--- delimiter, then JSONL patches.`
           if (trimmed.startsWith('{')) {
             try {
               const patch = JSON.parse(trimmed);
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'patch', patch })}\n\n`));
+              await sendAndTrack(patch);
             } catch {
               // Skip invalid JSON
             }
           }
         }
 
+        // Send correction patches for any Grids with wrong column counts
+        const corrections = computeLayoutCorrections(elements);
+        for (const patch of corrections) {
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'patch', patch })}\n\n`));
+        }
+
         // Signal completion
         await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`));
+        try {
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`));
+        } catch {
+          // Stream already closed (client disconnected)
+        }
       } finally {
-        await writer.close();
+        try {
+          await writer.close();
+        } catch {
+          // Stream already closed (client disconnected)
+        }
       }
     })();
 

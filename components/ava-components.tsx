@@ -375,10 +375,11 @@ export function EmailPreview({ element }: ComponentRenderProps) {
   );
 }
 
-// TaskItem Component - with checkbox animation
+// TaskItem Component - interactive checkbox that toggles between todo and done
 export function TaskItem({ element, onAction }: ComponentRenderProps) {
   const [isAnimating, setIsAnimating] = useState(false);
-  const { id, title, description, status, dueDate } = element.props as {
+  const [localStatus, setLocalStatus] = useState<string | null>(null);
+  const { id, title, description, status: serverStatus, dueDate } = element.props as {
     id: number;
     title: string;
     description?: string;
@@ -386,38 +387,42 @@ export function TaskItem({ element, onAction }: ComponentRenderProps) {
     dueDate?: string;
   };
 
+  const status = localStatus ?? serverStatus;
+
   const statusStyles = {
     todo: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'To Do' },
     in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'In Progress' },
     done: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Done' },
   };
 
-  const s = statusStyles[status];
+  const s = statusStyles[status as keyof typeof statusStyles] || statusStyles.todo;
 
   const formattedDate = dueDate ? new Date(dueDate).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   }) : '';
 
-  const handleComplete = () => {
-    if (status !== 'done' && onAction) {
-      setIsAnimating(true);
-      setTimeout(() => setIsAnimating(false), 300);
-      onAction({ name: 'complete_task', params: { taskId: id } } as Action);
-    }
+  const handleToggle = () => {
+    if (!onAction) return;
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 300);
+
+    const newStatus = status === 'done' ? 'todo' : 'done';
+    setLocalStatus(newStatus);
+    onAction({ name: 'update_task_status', params: { taskId: id, status: newStatus } } as Action);
   };
 
   return (
     <div className={`bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-all duration-200 ${status === 'done' ? 'opacity-75' : ''}`}>
       <div className="flex items-start gap-3">
         <button
-          onClick={handleComplete}
-          disabled={status === 'done'}
-          className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+          onClick={handleToggle}
+          className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
             status === 'done'
-              ? 'bg-emerald-500 border-emerald-500 text-white'
+              ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400 hover:border-emerald-400'
               : 'border-gray-300 hover:border-purple-500 hover:bg-purple-50'
           } ${isAnimating ? 'scale-125' : ''}`}
+          title={status === 'done' ? 'Mark as incomplete' : 'Mark as complete'}
         >
           {status === 'done' && <CheckCircleIcon className="w-3 h-3" />}
         </button>
@@ -442,6 +447,120 @@ export function TaskItem({ element, onAction }: ComponentRenderProps) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// TaskList Component — compact checklist for multiple tasks in a single container.
+// Inspired by Linear/Todoist: tight rows, hairline dividers, inline status + dates.
+export function TaskList({ element, onAction }: ComponentRenderProps) {
+  const { tasks } = element.props as {
+    tasks: Array<{
+      id: number;
+      title: string;
+      description?: string;
+      status: 'todo' | 'in_progress' | 'done';
+      dueDate?: string;
+    }>;
+  };
+
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+        <CheckCircleIcon className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+        <p className="text-sm text-gray-400">No tasks</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      {tasks.map((task, idx) => (
+        <TaskListRow
+          key={task.id}
+          task={task}
+          onAction={onAction}
+          isLast={idx === tasks.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TaskListRow({
+  task,
+  onAction,
+  isLast,
+}: {
+  task: { id: number; title: string; description?: string; status: string; dueDate?: string };
+  onAction?: (action: Action) => void;
+  isLast: boolean;
+}) {
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [localStatus, setLocalStatus] = useState<string | null>(null);
+  const status = localStatus ?? task.status;
+
+  const isDone = status === 'done';
+  const isInProgress = status === 'in_progress';
+
+  const handleToggle = () => {
+    if (!onAction) return;
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 300);
+    const newStatus = isDone ? 'todo' : 'done';
+    setLocalStatus(newStatus);
+    onAction({ name: 'update_task_status', params: { taskId: task.id, status: newStatus } } as Action);
+  };
+
+  const formattedDate = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 transition-colors duration-100 hover:bg-gray-50 group ${
+        !isLast ? 'border-b border-gray-100' : ''
+      } ${isDone ? 'bg-gray-50/50' : ''}`}
+    >
+      {/* Checkbox */}
+      <button
+        onClick={handleToggle}
+        className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
+          isDone
+            ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400 hover:border-emerald-400'
+            : isInProgress
+              ? 'border-blue-400 hover:border-blue-500 hover:bg-blue-50'
+              : 'border-gray-300 hover:border-purple-500 hover:bg-purple-50 group-hover:border-gray-400'
+        } ${isAnimating ? 'scale-125' : ''}`}
+        title={isDone ? 'Mark as incomplete' : 'Mark as complete'}
+      >
+        {isDone && <CheckCircleIcon className="w-2.5 h-2.5" />}
+        {isInProgress && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+      </button>
+
+      {/* Title */}
+      <span
+        className={`flex-1 text-[13px] truncate transition-all ${
+          isDone ? 'text-gray-400 line-through' : 'text-gray-800'
+        }`}
+      >
+        {task.title}
+      </span>
+
+      {/* Status pill — only for in-progress */}
+      {isInProgress && (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">
+          In Progress
+        </span>
+      )}
+
+      {/* Due date */}
+      {formattedDate && !isDone && (
+        <span className="text-[11px] text-gray-400 flex-shrink-0 flex items-center gap-1">
+          <CalendarIcon className="w-3 h-3" />
+          {formattedDate}
+        </span>
+      )}
     </div>
   );
 }
@@ -601,61 +720,134 @@ export function FileCard({ element }: ComponentRenderProps) {
   );
 }
 
-// MemoryCard Component - with category-specific styling
+// MemoryCard Component — stakeholder intelligence card with left accent bar,
+// category icon, contact attribution, and high/medium/low confidence badge.
 export function MemoryCard({ element }: ComponentRenderProps) {
   const { category, content, contact, confidence } = element.props as {
     category: string;
     content: string;
     contact?: string;
-    confidence?: number;
+    confidence?: 'high' | 'medium' | 'low';
   };
 
-  const categoryStyles: Record<string, { bg: string; text: string; border: string; Icon: ComponentType<{ className?: string }> }> = {
-    preference: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', Icon: LightBulbIcon },
-    relationship: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', Icon: UserGroupIcon },
-    technical_need: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', Icon: WrenchScrewdriverIcon },
-    objection: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', Icon: ExclamationTriangleIcon },
-    decision_process: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', Icon: FlagIcon },
+  const categoryStyles: Record<string, {
+    accent: string;
+    iconBg: string;
+    iconText: string;
+    label: string;
+    labelText: string;
+    Icon: ComponentType<{ className?: string }>;
+  }> = {
+    preference: {
+      accent: 'bg-blue-500',
+      iconBg: 'bg-blue-50',
+      iconText: 'text-blue-600',
+      label: 'Key Pain Point',
+      labelText: 'text-blue-700',
+      Icon: LightBulbIcon,
+    },
+    relationship: {
+      accent: 'bg-violet-500',
+      iconBg: 'bg-violet-50',
+      iconText: 'text-violet-600',
+      label: 'Relationship',
+      labelText: 'text-violet-700',
+      Icon: UserGroupIcon,
+    },
+    technical_need: {
+      accent: 'bg-teal-500',
+      iconBg: 'bg-teal-50',
+      iconText: 'text-teal-600',
+      label: 'Technical Need',
+      labelText: 'text-teal-700',
+      Icon: WrenchScrewdriverIcon,
+    },
+    objection: {
+      accent: 'bg-rose-500',
+      iconBg: 'bg-rose-50',
+      iconText: 'text-rose-600',
+      label: 'Objection',
+      labelText: 'text-rose-700',
+      Icon: ExclamationTriangleIcon,
+    },
+    decision_process: {
+      accent: 'bg-amber-500',
+      iconBg: 'bg-amber-50',
+      iconText: 'text-amber-600',
+      label: 'Decision Process',
+      labelText: 'text-amber-700',
+      Icon: FlagIcon,
+    },
+    budget_authority: {
+      accent: 'bg-emerald-500',
+      iconBg: 'bg-emerald-50',
+      iconText: 'text-emerald-600',
+      label: 'Budget Authority',
+      labelText: 'text-emerald-700',
+      Icon: BriefcaseIcon,
+    },
+    expansion: {
+      accent: 'bg-indigo-500',
+      iconBg: 'bg-indigo-50',
+      iconText: 'text-indigo-600',
+      label: 'Expansion Opportunity',
+      labelText: 'text-indigo-700',
+      Icon: LightBulbIcon,
+    },
   };
 
-  const categoryLabels: Record<string, string> = {
-    preference: 'Preference',
-    relationship: 'Relationship',
-    technical_need: 'Technical Need',
-    objection: 'Objection',
-    decision_process: 'Decision Process',
+  const confidenceStyles: Record<string, { dot: string; text: string; label: string }> = {
+    high:   { dot: 'bg-emerald-500', text: 'text-emerald-700', label: 'High' },
+    medium: { dot: 'bg-amber-500',   text: 'text-amber-700',   label: 'Medium' },
+    low:    { dot: 'bg-gray-400',    text: 'text-gray-500',    label: 'Low' },
   };
 
-  const cs = categoryStyles[category] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', Icon: DocumentTextIcon };
+  const cs = categoryStyles[category] || {
+    accent: 'bg-gray-400',
+    iconBg: 'bg-gray-50',
+    iconText: 'text-gray-500',
+    label: category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    labelText: 'text-gray-700',
+    Icon: DocumentTextIcon,
+  };
+
+  const conf = confidence ? confidenceStyles[confidence] : null;
 
   return (
-    <div className={`${cs.bg} rounded-xl border ${cs.border} p-4 shadow-sm`}>
-      <div className="flex items-start gap-3">
-        <div className={`w-8 h-8 rounded-lg bg-white/60 ${cs.text} flex items-center justify-center flex-shrink-0`}>
-          <cs.Icon className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className={`text-[10px] font-bold uppercase tracking-wide ${cs.text}`}>
-              {categoryLabels[category] || category}
-            </span>
-            {contact && (
-              <span className="text-[11px] text-gray-500">• {contact}</span>
-            )}
-          </div>
-          <p className="text-[13px] text-gray-700 leading-relaxed">{content}</p>
-          {confidence !== undefined && (
-            <div className="mt-2 flex items-center gap-2">
-              <div className="flex-1 h-1 bg-white/50 rounded-full overflow-hidden max-w-[100px]">
-                <div
-                  className={`h-full ${cs.text.replace('text-', 'bg-')} rounded-full`}
-                  style={{ width: `${confidence * 100}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-gray-500">{Math.round(confidence * 100)}% confident</span>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 group flex">
+      {/* Left accent bar */}
+      <div className={`w-1 flex-shrink-0 ${cs.accent}`} />
+
+      <div className="flex-1 p-4 min-w-0">
+        {/* Header row: icon + category + contact + confidence */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-7 h-7 rounded-lg ${cs.iconBg} ${cs.iconText} flex items-center justify-center flex-shrink-0`}>
+              <cs.Icon className="w-4 h-4" />
             </div>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${cs.labelText}`}>
+                {cs.label}
+              </span>
+              {contact && (
+                <>
+                  <span className="text-gray-300">&middot;</span>
+                  <span className="text-[12px] font-medium text-gray-500 truncate">{contact}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {conf && (
+            <span className="flex items-center gap-1.5 flex-shrink-0">
+              <span className={`w-1.5 h-1.5 rounded-full ${conf.dot}`} />
+              <span className={`text-[11px] font-semibold ${conf.text}`}>{conf.label}</span>
+            </span>
           )}
         </div>
+
+        {/* Content */}
+        <p className="text-[13px] text-gray-700 leading-relaxed pl-[38px]">{content}</p>
       </div>
     </div>
   );
@@ -849,6 +1041,7 @@ export const componentRegistry = {
   OpportunityCard,
   EmailPreview,
   TaskItem,
+  TaskList,
   MeetingCard,
   FileCard,
   MemoryCard,

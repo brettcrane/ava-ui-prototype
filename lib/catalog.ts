@@ -81,6 +81,19 @@ export const catalog = createCatalog({
       description: 'Display a task with status and optional due date',
     },
 
+    TaskList: {
+      props: z.object({
+        tasks: z.array(z.object({
+          id: z.number(),
+          title: z.string(),
+          description: z.string().optional(),
+          status: z.enum(['todo', 'in_progress', 'done']),
+          dueDate: z.string().optional(),
+        })),
+      }),
+      description: 'Compact checklist for multiple tasks in a single container — use instead of individual TaskItem cards in a grid',
+    },
+
     MeetingCard: {
       props: z.object({
         title: z.string(),
@@ -107,9 +120,9 @@ export const catalog = createCatalog({
         category: z.string(),
         content: z.string(),
         contact: z.string().optional(),
-        confidence: z.number().optional(),
+        confidence: z.enum(['high', 'medium', 'low']).optional(),
       }),
-      description: 'Display an agent memory/observation',
+      description: 'Display a stakeholder intelligence insight with category, content, optional contact name, and confidence level (high/medium/low)',
     },
 
     // Interactive components
@@ -166,7 +179,7 @@ export const catalog = createCatalog({
         gap: z.enum(['none', 'sm', 'md', 'lg']).optional(),
       }),
       hasChildren: true,
-      description: 'Grid layout container',
+      description: 'Grid layout container — column count is auto-corrected server-side based on child component types',
     },
 
     Text: {
