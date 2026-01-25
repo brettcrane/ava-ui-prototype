@@ -1,10 +1,7 @@
 'use client';
 
+import React, { useState } from 'react';
 import type { ComponentType } from 'react';
-import { useState } from 'react';
-import type { ComponentRenderProps } from '@json-render/react';
-import { useActions } from '@json-render/react';
-import type { Action } from '@json-render/core';
 import { Disclosure, DisclosureButton, DisclosurePanel, Transition } from '@headlessui/react';
 import {
   ChevronDownIcon,
@@ -30,7 +27,8 @@ import {
 } from '@heroicons/react/20/solid';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
-// Helper to format values
+// ── Helpers ──────────────────────────────────────────────────────────
+
 function formatValue(value: string | number, format?: string): string {
   if (typeof value === 'number') {
     switch (format) {
@@ -46,39 +44,136 @@ function formatValue(value: string | number, format?: string): string {
   return String(value);
 }
 
-// InfoCard Component - with subtle gradient and icon
-export function InfoCard({ element }: ComponentRenderProps) {
-  const { title, content, variant = 'default' } = element.props as {
-    title: string;
-    content: string;
-    variant?: 'default' | 'success' | 'warning' | 'error';
-  };
+// ── Prop types ───────────────────────────────────────────────────────
 
+export interface InfoCardProps {
+  title: string;
+  content: string;
+  variant?: 'default' | 'success' | 'warning' | 'error';
+}
+
+export interface DataTableProps {
+  columns: Array<{ key: string; label: string }>;
+  rows: Array<Record<string, unknown>>;
+  emptyMessage?: string;
+}
+
+export interface MetricCardProps {
+  label: string;
+  value: string | number;
+  format?: 'currency' | 'number' | 'percent';
+  trend?: 'up' | 'down' | 'neutral';
+  change?: string;
+}
+
+export interface ContactCardProps {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  isPrimary?: boolean;
+}
+
+export interface OpportunityCardProps {
+  name: string;
+  amount: number;
+  stage: string;
+  closeDate: string;
+  probability?: number;
+}
+
+export interface EmailPreviewProps {
+  subject: string;
+  from?: string;
+  to?: string;
+  body: string;
+  date?: string;
+  direction?: 'inbound' | 'outbound';
+}
+
+export interface TaskItemProps {
+  id: number;
+  title: string;
+  description?: string;
+  status: 'todo' | 'in_progress' | 'done';
+  dueDate?: string;
+  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+}
+
+export interface TaskListProps {
+  tasks: Array<{
+    id: number;
+    title: string;
+    description?: string;
+    status: 'todo' | 'in_progress' | 'done';
+    dueDate?: string;
+  }>;
+  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+}
+
+export interface MeetingCardProps {
+  title: string;
+  date: string;
+  time?: string;
+  attendees?: string[];
+  meetingType?: string;
+}
+
+export interface FileCardProps {
+  name: string;
+  fileType: string;
+  description?: string;
+  summary?: string;
+}
+
+export interface MemoryCardProps {
+  category: string;
+  content: string;
+  contact?: string;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface ActionButtonProps {
+  label: string;
+  actionName: string;
+  actionParams?: Record<string, unknown>;
+  variant?: 'primary' | 'secondary' | 'danger' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
+  disabled?: boolean;
+  isLoading?: boolean;
+  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
+}
+
+export interface TextProps {
+  content: string;
+  variant?: 'body' | 'caption' | 'heading' | 'subheading' | 'label';
+  color?: 'default' | 'muted' | 'success' | 'warning' | 'error';
+}
+
+export interface BadgeProps {
+  label: string;
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
+}
+
+// ── Components ──────────────────────────────────────────────────────
+
+export const InfoCard = React.memo(function InfoCard({ title, content, variant = 'default' }: InfoCardProps) {
   const styles = {
     default: { bg: 'bg-gradient-to-br from-purple-50 to-white', border: 'border-purple-200', accent: 'text-purple-700' },
     success: { bg: 'bg-gradient-to-br from-emerald-50 to-white', border: 'border-emerald-200', accent: 'text-emerald-700' },
     warning: { bg: 'bg-gradient-to-br from-amber-50 to-white', border: 'border-amber-200', accent: 'text-amber-700' },
     error: { bg: 'bg-gradient-to-br from-red-50 to-white', border: 'border-red-200', accent: 'text-red-700' },
   };
-
   const s = styles[variant];
-
   return (
     <div className={`${s.bg} rounded-xl border ${s.border} p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}>
       <h4 className={`text-sm font-semibold ${s.accent} mb-1.5`}>{title}</h4>
       <p className="text-gray-600 text-[13px] leading-relaxed whitespace-pre-wrap">{content}</p>
     </div>
   );
-}
+});
 
-// DataTable Component - with hover rows and sticky header
-export function DataTable({ element }: ComponentRenderProps) {
-  const { columns, rows, emptyMessage = 'No data available' } = element.props as {
-    columns: Array<{ key: string; label: string }>;
-    rows: Array<Record<string, unknown>>;
-    emptyMessage?: string;
-  };
-
+export const DataTable = React.memo(function DataTable({ columns, rows, emptyMessage = 'No data available' }: DataTableProps) {
   if (!rows || rows.length === 0) {
     return (
       <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 p-8 text-center">
@@ -89,7 +184,6 @@ export function DataTable({ element }: ComponentRenderProps) {
       </div>
     );
   }
-
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
@@ -108,15 +202,9 @@ export function DataTable({ element }: ComponentRenderProps) {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((row, idx) => (
-              <tr
-                key={idx}
-                className="hover:bg-purple-50/50 transition-colors duration-150 cursor-default group"
-              >
+              <tr key={idx} className="hover:bg-purple-50/50 transition-colors duration-150 cursor-default group">
                 {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className="px-4 py-3 text-[13px] text-gray-700 whitespace-nowrap group-hover:text-gray-900 transition-colors"
-                  >
+                  <td key={col.key} className="px-4 py-3 text-[13px] text-gray-700 whitespace-nowrap group-hover:text-gray-900 transition-colors">
                     {String(row[col.key] ?? '')}
                   </td>
                 ))}
@@ -127,26 +215,15 @@ export function DataTable({ element }: ComponentRenderProps) {
       </div>
     </div>
   );
-}
+});
 
-// MetricCard Component - with animated value and trend indicator
-export function MetricCard({ element }: ComponentRenderProps) {
-  const { label, value, format, trend, change } = element.props as {
-    label: string;
-    value: string | number;
-    format?: 'currency' | 'number' | 'percent';
-    trend?: 'up' | 'down' | 'neutral';
-    change?: string;
-  };
-
+export const MetricCard = React.memo(function MetricCard({ label, value, format, trend, change }: MetricCardProps) {
   const trendStyles = {
     up: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '↑' },
     down: { bg: 'bg-red-100', text: 'text-red-700', icon: '↓' },
     neutral: { bg: 'bg-gray-100', text: 'text-gray-600', icon: '→' },
   };
-
   const t = trend ? trendStyles[trend] : null;
-
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:border-purple-200 transition-all duration-200 group">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
@@ -163,57 +240,32 @@ export function MetricCard({ element }: ComponentRenderProps) {
       </div>
     </div>
   );
-}
+});
 
-// ContactCard Component - with hover effects and quick actions
-export function ContactCard({ element }: ComponentRenderProps) {
-  const { name, title, email, phone, isPrimary } = element.props as {
-    name: string;
-    title?: string;
-    email?: string;
-    phone?: string;
-    isPrimary?: boolean;
-  };
-
+export const ContactCard = React.memo(function ContactCard({ name, title, email, phone, isPrimary }: ContactCardProps) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-lg hover:border-purple-300 transition-all duration-200 group">
       <div className="flex items-start gap-3">
-        {/* Avatar */}
         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-sm">
           {name.split(' ').map(n => n[0]).join('').slice(0, 2)}
         </div>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 truncate group-hover:text-purple-700 transition-colors">
-              {name}
-            </h4>
-            {isPrimary && (
-              <StarIconSolid className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            )}
+            <h4 className="text-sm font-semibold text-gray-900 truncate group-hover:text-purple-700 transition-colors">{name}</h4>
+            {isPrimary && <StarIconSolid className="w-4 h-4 text-amber-400 flex-shrink-0" />}
           </div>
-          {title && (
-            <p className="text-xs text-gray-500 mt-0.5 truncate">{title}</p>
-          )}
+          {title && <p className="text-xs text-gray-500 mt-0.5 truncate">{title}</p>}
         </div>
       </div>
-
-      {/* Quick action buttons */}
       <div className="mt-3 flex gap-2">
         {email && (
-          <a
-            href={`mailto:${email}`}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-purple-50 text-gray-600 hover:text-purple-700 rounded-lg text-xs font-medium transition-colors"
-          >
+          <a href={`mailto:${email}`} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-purple-50 text-gray-600 hover:text-purple-700 rounded-lg text-xs font-medium transition-colors">
             <EnvelopeIcon className="w-3.5 h-3.5" />
             Email
           </a>
         )}
         {phone && (
-          <a
-            href={`tel:${phone}`}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-purple-50 text-gray-600 hover:text-purple-700 rounded-lg text-xs font-medium transition-colors"
-          >
+          <a href={`tel:${phone}`} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-purple-50 text-gray-600 hover:text-purple-700 rounded-lg text-xs font-medium transition-colors">
             <PhoneIcon className="w-3.5 h-3.5" />
             Call
           </a>
@@ -221,18 +273,9 @@ export function ContactCard({ element }: ComponentRenderProps) {
       </div>
     </div>
   );
-}
+});
 
-// OpportunityCard Component - with progress bar and stage visualization
-export function OpportunityCard({ element }: ComponentRenderProps) {
-  const { name, amount, stage, closeDate, probability } = element.props as {
-    name: string;
-    amount: number;
-    stage: string;
-    closeDate: string;
-    probability?: number;
-  };
-
+export const OpportunityCard = React.memo(function OpportunityCard({ name, amount, stage, closeDate, probability }: OpportunityCardProps) {
   const stages = ['discovery', 'qualification', 'proposal', 'negotiation', 'closed_won'];
   const stageIndex = stages.indexOf(stage);
   const progressPercent = ((stageIndex + 1) / stages.length) * 100;
@@ -245,25 +288,15 @@ export function OpportunityCard({ element }: ComponentRenderProps) {
     closed_won: { bg: 'bg-emerald-500', text: 'text-emerald-700', ring: 'ring-emerald-200' },
     closed_lost: { bg: 'bg-red-500', text: 'text-red-700', ring: 'ring-red-200' },
   };
-
   const sc = stageColors[stage] || stageColors.discovery;
 
-  const formattedDate = new Date(closeDate).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const formattedDate = new Date(closeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
-      {/* Progress bar */}
       <div className="h-1 bg-gray-100">
-        <div
-          className={`h-full ${sc.bg} transition-all duration-500`}
-          style={{ width: `${progressPercent}%` }}
-        />
+        <div className={`h-full ${sc.bg} transition-all duration-500`} style={{ width: `${progressPercent}%` }} />
       </div>
-
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <h4 className="text-sm font-semibold text-gray-900">{name}</h4>
@@ -271,7 +304,6 @@ export function OpportunityCard({ element }: ComponentRenderProps) {
             {stage.replace('_', ' ')}
           </span>
         </div>
-
         <div className="flex flex-wrap gap-x-6 gap-y-3">
           <div className="min-w-[100px]">
             <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Value</p>
@@ -286,10 +318,7 @@ export function OpportunityCard({ element }: ComponentRenderProps) {
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Probability</p>
               <div className="flex items-center gap-1">
                 <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-purple-500 rounded-full transition-all duration-300"
-                    style={{ width: `${probability}%` }}
-                  />
+                  <div className="h-full bg-purple-500 rounded-full transition-all duration-300" style={{ width: `${probability}%` }} />
                 </div>
                 <span className="text-xs font-bold text-gray-700">{probability}%</span>
               </div>
@@ -299,27 +328,10 @@ export function OpportunityCard({ element }: ComponentRenderProps) {
       </div>
     </div>
   );
-}
+});
 
-// EmailPreview Component - with Disclosure for expandable content
-export function EmailPreview({ element }: ComponentRenderProps) {
-  const { subject, from, to, body, date, direction } = element.props as {
-    subject: string;
-    from?: string;
-    to?: string;
-    body: string;
-    date?: string;
-    direction?: 'inbound' | 'outbound';
-  };
-
-  const formattedDate = date ? new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }) : '';
-
-  const isLongBody = body.length > 150;
+export const EmailPreview = React.memo(function EmailPreview({ subject, from, to, body, date, direction }: EmailPreviewProps) {
+  const formattedDate = date ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 
   return (
     <Disclosure as="div" className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -328,17 +340,13 @@ export function EmailPreview({ element }: ComponentRenderProps) {
           <DisclosureButton className="w-full p-4 text-left hover:bg-gray-50 transition-colors">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  direction === 'inbound' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${direction === 'inbound' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
                   <EnvelopeIcon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <h4 className="text-sm font-semibold text-gray-900 truncate">{subject}</h4>
                   <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                      direction === 'inbound' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
-                    }`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${direction === 'inbound' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
                       {direction === 'inbound' ? 'Received' : 'Sent'}
                     </span>
                     {from && <span className="truncate">from {from}</span>}
@@ -351,7 +359,6 @@ export function EmailPreview({ element }: ComponentRenderProps) {
               </div>
             </div>
           </DisclosureButton>
-
           <Transition
             enter="transition duration-100 ease-out"
             enterFrom="transform scale-95 opacity-0"
@@ -363,9 +370,7 @@ export function EmailPreview({ element }: ComponentRenderProps) {
             <DisclosurePanel className="px-4 pb-4">
               <div className="pt-3 border-t border-gray-100">
                 {to && <p className="text-xs text-gray-500 mb-2">To: {to}</p>}
-                <div className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg p-3">
-                  {body}
-                </div>
+                <div className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg p-3">{body}</div>
               </div>
             </DisclosurePanel>
           </Transition>
@@ -373,20 +378,11 @@ export function EmailPreview({ element }: ComponentRenderProps) {
       )}
     </Disclosure>
   );
-}
+});
 
-// TaskItem Component - interactive checkbox that toggles between todo and done
-export function TaskItem({ element, onAction }: ComponentRenderProps) {
+export const TaskItem = React.memo(function TaskItem({ id, title, description, status: serverStatus, dueDate, onAction }: TaskItemProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [localStatus, setLocalStatus] = useState<string | null>(null);
-  const { id, title, description, status: serverStatus, dueDate } = element.props as {
-    id: number;
-    title: string;
-    description?: string;
-    status: 'todo' | 'in_progress' | 'done';
-    dueDate?: string;
-  };
-
   const status = localStatus ?? serverStatus;
 
   const statusStyles = {
@@ -394,22 +390,17 @@ export function TaskItem({ element, onAction }: ComponentRenderProps) {
     in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'In Progress' },
     done: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Done' },
   };
-
   const s = statusStyles[status as keyof typeof statusStyles] || statusStyles.todo;
 
-  const formattedDate = dueDate ? new Date(dueDate).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  }) : '';
+  const formattedDate = dueDate ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
   const handleToggle = () => {
     if (!onAction) return;
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 300);
-
     const newStatus = status === 'done' ? 'todo' : 'done';
     setLocalStatus(newStatus);
-    onAction({ name: 'update_task_status', params: { taskId: id, status: newStatus } } as Action);
+    onAction({ name: 'update_task_status', params: { taskId: id, status: newStatus } });
   };
 
   return (
@@ -426,66 +417,18 @@ export function TaskItem({ element, onAction }: ComponentRenderProps) {
         >
           {status === 'done' && <CheckCircleIcon className="w-3 h-3" />}
         </button>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className={`text-sm font-medium transition-all ${status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-              {title}
-            </h4>
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.bg} ${s.text}`}>
-              {s.label}
-            </span>
+            <h4 className={`text-sm font-medium transition-all ${status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{title}</h4>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${s.bg} ${s.text}`}>{s.label}</span>
           </div>
-          {description && (
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{description}</p>
-          )}
-          {formattedDate && (
-            <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
-              <CalendarIcon className="w-3 h-3" />
-              Due {formattedDate}
-            </p>
-          )}
+          {description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{description}</p>}
+          {formattedDate && <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><CalendarIcon className="w-3 h-3" />Due {formattedDate}</p>}
         </div>
       </div>
     </div>
   );
-}
-
-// TaskList Component — compact checklist for multiple tasks in a single container.
-// Inspired by Linear/Todoist: tight rows, hairline dividers, inline status + dates.
-export function TaskList({ element, onAction }: ComponentRenderProps) {
-  const { tasks } = element.props as {
-    tasks: Array<{
-      id: number;
-      title: string;
-      description?: string;
-      status: 'todo' | 'in_progress' | 'done';
-      dueDate?: string;
-    }>;
-  };
-
-  if (!tasks || tasks.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-        <CheckCircleIcon className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-        <p className="text-sm text-gray-400">No tasks</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-      {tasks.map((task, idx) => (
-        <TaskListRow
-          key={task.id}
-          task={task}
-          onAction={onAction}
-          isLast={idx === tasks.length - 1}
-        />
-      ))}
-    </div>
-  );
-}
+});
 
 function TaskListRow({
   task,
@@ -493,13 +436,12 @@ function TaskListRow({
   isLast,
 }: {
   task: { id: number; title: string; description?: string; status: string; dueDate?: string };
-  onAction?: (action: Action) => void;
+  onAction?: (action: { name: string; params: Record<string, unknown> }) => void;
   isLast: boolean;
 }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [localStatus, setLocalStatus] = useState<string | null>(null);
   const status = localStatus ?? task.status;
-
   const isDone = status === 'done';
   const isInProgress = status === 'in_progress';
 
@@ -509,7 +451,7 @@ function TaskListRow({
     setTimeout(() => setIsAnimating(false), 300);
     const newStatus = isDone ? 'todo' : 'done';
     setLocalStatus(newStatus);
-    onAction({ name: 'update_task_status', params: { taskId: task.id, status: newStatus } } as Action);
+    onAction({ name: 'update_task_status', params: { taskId: task.id, status: newStatus } });
   };
 
   const formattedDate = task.dueDate
@@ -517,12 +459,7 @@ function TaskListRow({
     : '';
 
   return (
-    <div
-      className={`flex items-center gap-3 px-4 py-3 transition-colors duration-100 hover:bg-gray-50 group ${
-        !isLast ? 'border-b border-gray-100' : ''
-      } ${isDone ? 'bg-gray-50/50' : ''}`}
-    >
-      {/* Checkbox */}
+    <div className={`flex items-center gap-3 px-4 py-3 transition-colors duration-100 hover:bg-gray-50 group ${!isLast ? 'border-b border-gray-100' : ''} ${isDone ? 'bg-gray-50/50' : ''}`}>
       <button
         onClick={handleToggle}
         className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
@@ -537,24 +474,8 @@ function TaskListRow({
         {isDone && <CheckCircleIcon className="w-2.5 h-2.5" />}
         {isInProgress && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
       </button>
-
-      {/* Title */}
-      <span
-        className={`flex-1 text-[13px] truncate transition-all ${
-          isDone ? 'text-gray-400 line-through' : 'text-gray-800'
-        }`}
-      >
-        {task.title}
-      </span>
-
-      {/* Status pill — only for in-progress */}
-      {isInProgress && (
-        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">
-          In Progress
-        </span>
-      )}
-
-      {/* Due date */}
+      <span className={`flex-1 text-[13px] truncate transition-all ${isDone ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</span>
+      {isInProgress && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">In Progress</span>}
       {formattedDate && !isDone && (
         <span className="text-[11px] text-gray-400 flex-shrink-0 flex items-center gap-1">
           <CalendarIcon className="w-3 h-3" />
@@ -565,21 +486,26 @@ function TaskListRow({
   );
 }
 
-// MeetingCard Component - with timeline-style design
-export function MeetingCard({ element }: ComponentRenderProps) {
-  const { title, date, time, attendees, meetingType } = element.props as {
-    title: string;
-    date: string;
-    time?: string;
-    attendees?: string[];
-    meetingType?: string;
-  };
+export const TaskList = React.memo(function TaskList({ tasks, onAction }: TaskListProps) {
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+        <CheckCircleIcon className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+        <p className="text-sm text-gray-400">No tasks</p>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      {tasks.map((task, idx) => (
+        <TaskListRow key={task.id} task={task} onAction={onAction} isLast={idx === tasks.length - 1} />
+      ))}
+    </div>
+  );
+});
 
-  const formattedDate = new Date(date).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
+export const MeetingCard = React.memo(function MeetingCard({ title, date, time, attendees, meetingType }: MeetingCardProps) {
+  const formattedDate = new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   const typeStyles: Record<string, { bg: string; text: string; Icon: ComponentType<{ className?: string }> }> = {
     discovery: { bg: 'bg-blue-100', text: 'text-blue-700', Icon: MagnifyingGlassIcon },
@@ -588,26 +514,18 @@ export function MeetingCard({ element }: ComponentRenderProps) {
     negotiation: { bg: 'bg-orange-100', text: 'text-orange-700', Icon: ScaleIcon },
     closing: { bg: 'bg-emerald-100', text: 'text-emerald-700', Icon: CheckBadgeIcon },
   };
-
   const ts = meetingType ? typeStyles[meetingType] : null;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 group">
       <div className="flex">
-        {/* Date column */}
         <div className="w-16 bg-gradient-to-b from-purple-600 to-purple-700 text-white flex flex-col items-center justify-center py-3">
           <span className="text-2xl font-bold">{new Date(date).getDate()}</span>
-          <span className="text-[10px] uppercase tracking-wide opacity-80">
-            {new Date(date).toLocaleDateString('en-US', { month: 'short' })}
-          </span>
+          <span className="text-[10px] uppercase tracking-wide opacity-80">{new Date(date).toLocaleDateString('en-US', { month: 'short' })}</span>
         </div>
-
-        {/* Content */}
         <div className="flex-1 p-3">
           <div className="flex items-start justify-between gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">
-              {title}
-            </h4>
+            <h4 className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">{title}</h4>
             {ts && (
               <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${ts.bg} ${ts.text}`}>
                 <ts.Icon className="w-3 h-3" />
@@ -615,50 +533,32 @@ export function MeetingCard({ element }: ComponentRenderProps) {
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {formattedDate}
-            {time && ` at ${time}`}
-          </p>
+          <p className="text-xs text-gray-500 mt-0.5">{formattedDate}{time && ` at ${time}`}</p>
           {attendees && attendees.length > 0 && (
             <div className="mt-2 flex items-center gap-1">
               <div className="flex -space-x-1.5">
                 {attendees.slice(0, 3).map((a, i) => (
-                  <div
-                    key={i}
-                    className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 border-2 border-white text-[8px] font-bold text-gray-600 flex items-center justify-center"
-                    title={a}
-                  >
+                  <div key={i} className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 border-2 border-white text-[8px] font-bold text-gray-600 flex items-center justify-center" title={a}>
                     {a.split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </div>
                 ))}
               </div>
-              <span className="text-[11px] text-gray-500 ml-1">
-                {attendees.length > 3 ? `+${attendees.length - 3} more` : ''}
-              </span>
+              <span className="text-[11px] text-gray-500 ml-1">{attendees.length > 3 ? `+${attendees.length - 3} more` : ''}</span>
             </div>
           )}
         </div>
       </div>
     </div>
   );
-}
+});
 
-// FileCard Component - with expandable summary using Disclosure
-export function FileCard({ element }: ComponentRenderProps) {
-  const { name, fileType, description, summary } = element.props as {
-    name: string;
-    fileType: string;
-    description?: string;
-    summary?: string;
-  };
-
+export const FileCard = React.memo(function FileCard({ name, fileType, description, summary }: FileCardProps) {
   const typeIcons: Record<string, { Icon: ComponentType<{ className?: string }>; bg: string; text: string }> = {
     pdf: { Icon: DocumentIcon, bg: 'bg-red-100', text: 'text-red-600' },
     docx: { Icon: DocumentTextIcon, bg: 'bg-blue-100', text: 'text-blue-600' },
     xlsx: { Icon: TableCellsIcon, bg: 'bg-emerald-100', text: 'text-emerald-600' },
     pptx: { Icon: PresentationChartBarIcon, bg: 'bg-orange-100', text: 'text-orange-600' },
   };
-
   const ti = typeIcons[fileType] || { Icon: FolderIcon, bg: 'bg-gray-100', text: 'text-gray-600' };
 
   if (!summary) {
@@ -669,9 +569,7 @@ export function FileCard({ element }: ComponentRenderProps) {
             <ti.Icon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <h4 className="text-sm font-semibold text-gray-900 truncate group-hover:text-purple-700 transition-colors">
-              {name}
-            </h4>
+            <h4 className="text-sm font-semibold text-gray-900 truncate group-hover:text-purple-700 transition-colors">{name}</h4>
             {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
           </div>
         </div>
@@ -697,7 +595,6 @@ export function FileCard({ element }: ComponentRenderProps) {
               <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
             </div>
           </DisclosureButton>
-
           <Transition
             enter="transition duration-100 ease-out"
             enterFrom="transform scale-95 opacity-0"
@@ -708,9 +605,7 @@ export function FileCard({ element }: ComponentRenderProps) {
           >
             <DisclosurePanel className="px-4 pb-4">
               <div className="pt-3 border-t border-gray-100">
-                <p className="text-[13px] text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">
-                  {summary}
-                </p>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">{summary}</p>
               </div>
             </DisclosurePanel>
           </Transition>
@@ -718,117 +613,43 @@ export function FileCard({ element }: ComponentRenderProps) {
       )}
     </Disclosure>
   );
-}
+});
 
-// MemoryCard Component — stakeholder intelligence card with left accent bar,
-// category icon, contact attribution, and high/medium/low confidence badge.
-export function MemoryCard({ element }: ComponentRenderProps) {
-  const { category, content, contact, confidence } = element.props as {
-    category: string;
-    content: string;
-    contact?: string;
-    confidence?: 'high' | 'medium' | 'low';
-  };
-
-  const categoryStyles: Record<string, {
-    accent: string;
-    iconBg: string;
-    iconText: string;
-    label: string;
-    labelText: string;
-    Icon: ComponentType<{ className?: string }>;
-  }> = {
-    preference: {
-      accent: 'bg-blue-500',
-      iconBg: 'bg-blue-50',
-      iconText: 'text-blue-600',
-      label: 'Key Pain Point',
-      labelText: 'text-blue-700',
-      Icon: LightBulbIcon,
-    },
-    relationship: {
-      accent: 'bg-violet-500',
-      iconBg: 'bg-violet-50',
-      iconText: 'text-violet-600',
-      label: 'Relationship',
-      labelText: 'text-violet-700',
-      Icon: UserGroupIcon,
-    },
-    technical_need: {
-      accent: 'bg-teal-500',
-      iconBg: 'bg-teal-50',
-      iconText: 'text-teal-600',
-      label: 'Technical Need',
-      labelText: 'text-teal-700',
-      Icon: WrenchScrewdriverIcon,
-    },
-    objection: {
-      accent: 'bg-rose-500',
-      iconBg: 'bg-rose-50',
-      iconText: 'text-rose-600',
-      label: 'Objection',
-      labelText: 'text-rose-700',
-      Icon: ExclamationTriangleIcon,
-    },
-    decision_process: {
-      accent: 'bg-amber-500',
-      iconBg: 'bg-amber-50',
-      iconText: 'text-amber-600',
-      label: 'Decision Process',
-      labelText: 'text-amber-700',
-      Icon: FlagIcon,
-    },
-    budget_authority: {
-      accent: 'bg-emerald-500',
-      iconBg: 'bg-emerald-50',
-      iconText: 'text-emerald-600',
-      label: 'Budget Authority',
-      labelText: 'text-emerald-700',
-      Icon: BriefcaseIcon,
-    },
-    expansion: {
-      accent: 'bg-indigo-500',
-      iconBg: 'bg-indigo-50',
-      iconText: 'text-indigo-600',
-      label: 'Expansion Opportunity',
-      labelText: 'text-indigo-700',
-      Icon: LightBulbIcon,
-    },
+export const MemoryCard = React.memo(function MemoryCard({ category, content, contact, confidence }: MemoryCardProps) {
+  const categoryStyles: Record<string, { accent: string; iconBg: string; iconText: string; label: string; labelText: string; Icon: ComponentType<{ className?: string }> }> = {
+    preference: { accent: 'bg-blue-500', iconBg: 'bg-blue-50', iconText: 'text-blue-600', label: 'Key Pain Point', labelText: 'text-blue-700', Icon: LightBulbIcon },
+    relationship: { accent: 'bg-violet-500', iconBg: 'bg-violet-50', iconText: 'text-violet-600', label: 'Relationship', labelText: 'text-violet-700', Icon: UserGroupIcon },
+    technical_need: { accent: 'bg-teal-500', iconBg: 'bg-teal-50', iconText: 'text-teal-600', label: 'Technical Need', labelText: 'text-teal-700', Icon: WrenchScrewdriverIcon },
+    objection: { accent: 'bg-rose-500', iconBg: 'bg-rose-50', iconText: 'text-rose-600', label: 'Objection', labelText: 'text-rose-700', Icon: ExclamationTriangleIcon },
+    decision_process: { accent: 'bg-amber-500', iconBg: 'bg-amber-50', iconText: 'text-amber-600', label: 'Decision Process', labelText: 'text-amber-700', Icon: FlagIcon },
+    budget_authority: { accent: 'bg-emerald-500', iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', label: 'Budget Authority', labelText: 'text-emerald-700', Icon: BriefcaseIcon },
+    expansion: { accent: 'bg-indigo-500', iconBg: 'bg-indigo-50', iconText: 'text-indigo-600', label: 'Expansion Opportunity', labelText: 'text-indigo-700', Icon: LightBulbIcon },
   };
 
   const confidenceStyles: Record<string, { dot: string; text: string; label: string }> = {
-    high:   { dot: 'bg-emerald-500', text: 'text-emerald-700', label: 'High' },
-    medium: { dot: 'bg-amber-500',   text: 'text-amber-700',   label: 'Medium' },
-    low:    { dot: 'bg-gray-400',    text: 'text-gray-500',    label: 'Low' },
+    high: { dot: 'bg-emerald-500', text: 'text-emerald-700', label: 'High' },
+    medium: { dot: 'bg-amber-500', text: 'text-amber-700', label: 'Medium' },
+    low: { dot: 'bg-gray-400', text: 'text-gray-500', label: 'Low' },
   };
 
   const cs = categoryStyles[category] || {
-    accent: 'bg-gray-400',
-    iconBg: 'bg-gray-50',
-    iconText: 'text-gray-500',
+    accent: 'bg-gray-400', iconBg: 'bg-gray-50', iconText: 'text-gray-500',
     label: category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-    labelText: 'text-gray-700',
-    Icon: DocumentTextIcon,
+    labelText: 'text-gray-700', Icon: DocumentTextIcon,
   };
-
   const conf = confidence ? confidenceStyles[confidence] : null;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 group flex">
-      {/* Left accent bar */}
       <div className={`w-1 flex-shrink-0 ${cs.accent}`} />
-
       <div className="flex-1 p-4 min-w-0">
-        {/* Header row: icon + category + contact + confidence */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className={`w-7 h-7 rounded-lg ${cs.iconBg} ${cs.iconText} flex items-center justify-center flex-shrink-0`}>
               <cs.Icon className="w-4 h-4" />
             </div>
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className={`text-[11px] font-bold uppercase tracking-wider ${cs.labelText}`}>
-                {cs.label}
-              </span>
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${cs.labelText}`}>{cs.label}</span>
               {contact && (
                 <>
                   <span className="text-gray-300">&middot;</span>
@@ -837,7 +658,6 @@ export function MemoryCard({ element }: ComponentRenderProps) {
               )}
             </div>
           </div>
-
           {conf && (
             <span className="flex items-center gap-1.5 flex-shrink-0">
               <span className={`w-1.5 h-1.5 rounded-full ${conf.dot}`} />
@@ -845,48 +665,26 @@ export function MemoryCard({ element }: ComponentRenderProps) {
             </span>
           )}
         </div>
-
-        {/* Content */}
         <p className="text-[13px] text-gray-700 leading-relaxed pl-[38px]">{content}</p>
       </div>
     </div>
   );
-}
+});
 
-// ActionButton Component - with better hover states
-export function ActionButton({ element, onAction }: ComponentRenderProps) {
-  const { loadingActions } = useActions();
-  const { label, action, variant = 'primary', disabled, size = 'md' } = element.props as {
-    label: string;
-    action: Action;
-    variant?: 'primary' | 'secondary' | 'danger' | 'outline';
-    disabled?: boolean;
-    size?: 'sm' | 'md' | 'lg';
-  };
-
-  const isLoading = action?.name ? loadingActions.has(action.name) : false;
-
+export const ActionButton = React.memo(function ActionButton({ label, actionName, actionParams, variant = 'primary', size = 'md', disabled, isLoading, onAction }: ActionButtonProps) {
   const variantClasses = {
     primary: 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-sm hover:shadow-md',
     secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
     danger: 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-sm hover:shadow-md',
     outline: 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50',
   };
-
-  const sizeClasses = {
-    sm: 'px-3 py-1.5 text-xs',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-5 py-2.5 text-sm',
-  };
+  const sizeClasses = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2 text-sm', lg: 'px-5 py-2.5 text-sm' };
 
   return (
     <button
-      onClick={() => onAction?.(action)}
+      onClick={() => onAction?.({ name: actionName, params: actionParams || {} })}
       disabled={disabled || isLoading}
-      className={`inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200
-        ${variantClasses[variant]} ${sizeClasses[size]}
-        ${(disabled || isLoading) ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}
-      `}
+      className={`inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200 ${variantClasses[variant]} ${sizeClasses[size]} ${(disabled || isLoading) ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
     >
       {isLoading ? (
         <>
@@ -896,127 +694,22 @@ export function ActionButton({ element, onAction }: ComponentRenderProps) {
           </svg>
           Loading...
         </>
-      ) : (
-        label
-      )}
+      ) : label}
     </button>
   );
-}
+});
 
-// Stack Component
-export function Stack({ element, children }: ComponentRenderProps) {
-  const { direction = 'vertical', gap = 'md', align = 'stretch' } = element.props as {
-    direction?: 'vertical' | 'horizontal';
-    gap?: 'none' | 'sm' | 'md' | 'lg';
-    align?: 'start' | 'center' | 'end' | 'stretch';
-  };
-
-  const gapClasses = { none: 'gap-0', sm: 'gap-2', md: 'gap-3', lg: 'gap-4' };
-  const alignClasses = { start: 'items-start', center: 'items-center', end: 'items-end', stretch: 'items-stretch' };
-
-  return (
-    <div className={`flex ${direction === 'horizontal' ? 'flex-row flex-wrap' : 'flex-col'} ${gapClasses[gap]} ${alignClasses[align]}`}>
-      {children}
-    </div>
-  );
-}
-
-// Grid Component — uses auto-fit with minmax so columns adapt to actual
-// container width rather than viewport breakpoints (which don't work well
-// inside a chat message column).
-export function Grid({ element, children }: ComponentRenderProps) {
-  const { columns = 2, gap = 'md' } = element.props as {
-    columns?: number;
-    gap?: 'none' | 'sm' | 'md' | 'lg';
-  };
-
-  const gapClasses = { none: 'gap-0', sm: 'gap-2', md: 'gap-3', lg: 'gap-4' };
-
-  // Minimum column width that triggers wrapping. Larger min = fewer columns at
-  // narrow widths. We scale the minimum based on the requested column count so
-  // that asking for more columns produces narrower minimums.
-  const minWidths: Record<number, string> = {
-    1: '100%',
-    2: '260px',
-    3: '220px',
-    4: '180px',
-  };
-
-  const minW = minWidths[columns] || minWidths[2];
-
-  // For single column just use a simple stack
-  if (columns === 1) {
-    return (
-      <div className={`grid grid-cols-1 ${gapClasses[gap]}`}>
-        {children}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`grid ${gapClasses[gap]}`}
-      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${minW}, 1fr))` }}
-    >
-      {children}
-    </div>
-  );
-}
-
-// Text Component
-export function Text({ element }: ComponentRenderProps) {
-  const { content, variant = 'body', color = 'default' } = element.props as {
-    content: string;
-    variant?: 'body' | 'caption' | 'heading' | 'subheading' | 'label';
-    color?: 'default' | 'muted' | 'success' | 'warning' | 'error';
-  };
-
+export const TextComponent = React.memo(function TextComponent({ content, variant = 'body', color = 'default' }: TextProps) {
   const variantClasses = {
-    body: 'text-[13px]',
-    caption: 'text-xs',
-    heading: 'text-base font-bold',
-    subheading: 'text-sm font-semibold',
-    label: 'text-xs font-medium uppercase tracking-wide',
+    body: 'text-[13px]', caption: 'text-xs', heading: 'text-base font-bold', subheading: 'text-sm font-semibold', label: 'text-xs font-medium uppercase tracking-wide',
   };
-
   const colorClasses = {
-    default: 'text-gray-900',
-    muted: 'text-gray-500',
-    success: 'text-emerald-600',
-    warning: 'text-amber-600',
-    error: 'text-red-600',
+    default: 'text-gray-900', muted: 'text-gray-500', success: 'text-emerald-600', warning: 'text-amber-600', error: 'text-red-600',
   };
-
   return <p className={`${variantClasses[variant]} ${colorClasses[color]}`}>{content}</p>;
-}
+});
 
-// Divider Component
-export function Divider({ element }: ComponentRenderProps) {
-  const { label } = element.props as { label?: string };
-
-  if (label) {
-    return (
-      <div className="relative my-4">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-200" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="px-3 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</span>
-        </div>
-      </div>
-    );
-  }
-
-  return <hr className="my-4 border-gray-200" />;
-}
-
-// Badge Component
-export function Badge({ element }: ComponentRenderProps) {
-  const { label, variant = 'default' } = element.props as {
-    label: string;
-    variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
-  };
-
+export const Badge = React.memo(function Badge({ label, variant = 'default' }: BadgeProps) {
   const variantClasses = {
     default: 'bg-gray-100 text-gray-700',
     success: 'bg-emerald-100 text-emerald-700',
@@ -1024,33 +717,78 @@ export function Badge({ element }: ComponentRenderProps) {
     error: 'bg-red-100 text-red-700',
     info: 'bg-blue-100 text-blue-700',
   };
-
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${variantClasses[variant]}`}>
       {label}
     </span>
   );
+});
+
+// ── Layout helpers for rendering tool results ───────────────────────
+
+// Infer the best layout for a section based on component types
+function inferLayout(components: Array<Record<string, unknown>>): string {
+  const types = components.map(c => String(c.type || ''));
+  const compactTypes = ['MetricCard', 'ContactCard', 'Badge'];
+  const fullWidthTypes = ['OpportunityCard', 'DataTable', 'TaskList'];
+
+  if (types.every(t => compactTypes.includes(t))) return 'grid-3';
+  if (types.every(t => fullWidthTypes.includes(t))) return 'full-width';
+  return 'grid-2';
 }
 
-// Export registry
-export const componentRegistry = {
-  InfoCard,
-  DataTable,
-  MetricCard,
-  ContactCard,
-  OpportunityCard,
-  EmailPreview,
-  TaskItem,
-  TaskList,
-  MeetingCard,
-  FileCard,
-  MemoryCard,
-  ActionButton,
-  Stack,
-  Grid,
-  Text,
-  Divider,
-  Badge,
+const layoutClasses: Record<string, string> = {
+  'grid-3': 'grid gap-3',
+  'grid-2': 'grid gap-3',
+  'full-width': 'flex flex-col gap-3',
+  'stack': 'flex flex-col gap-3',
 };
 
-export type ComponentRegistry = typeof componentRegistry;
+const layoutStyles: Record<string, React.CSSProperties> = {
+  'grid-3': { gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' },
+  'grid-2': { gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' },
+  'full-width': {},
+  'stack': {},
+};
+
+// Action handler that forwards to the API
+async function handleAction(action: { name: string; params: Record<string, unknown> }) {
+  await fetch('/api/actions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action.name, params: action.params }),
+  });
+}
+
+// Render a single component from tool output data
+export function renderComponent(comp: Record<string, unknown>, key: number | string) {
+  const type = comp.type as string;
+  switch (type) {
+    case 'InfoCard': return <InfoCard key={key} title={comp.title as string} content={comp.content as string} variant={comp.variant as InfoCardProps['variant']} />;
+    case 'MetricCard': return <MetricCard key={key} label={comp.label as string} value={comp.value as string | number} format={comp.format as MetricCardProps['format']} trend={comp.trend as MetricCardProps['trend']} change={comp.change as string} />;
+    case 'ContactCard': return <ContactCard key={key} name={comp.name as string} title={comp.title as string} email={comp.email as string} phone={comp.phone as string} isPrimary={comp.isPrimary as boolean} />;
+    case 'OpportunityCard': return <OpportunityCard key={key} name={comp.name as string} amount={comp.amount as number} stage={comp.stage as string} closeDate={comp.closeDate as string} probability={comp.probability as number} />;
+    case 'EmailPreview': return <EmailPreview key={key} subject={comp.subject as string} from={comp.from as string} to={comp.to as string} body={comp.body as string} date={comp.date as string} direction={comp.direction as EmailPreviewProps['direction']} />;
+    case 'TaskList': return <TaskList key={key} tasks={comp.tasks as TaskListProps['tasks']} onAction={handleAction} />;
+    case 'MeetingCard': return <MeetingCard key={key} title={comp.title as string} date={comp.date as string} time={comp.time as string} attendees={comp.attendees as string[]} meetingType={comp.meetingType as string} />;
+    case 'FileCard': return <FileCard key={key} name={comp.name as string} fileType={comp.fileType as string} description={comp.description as string} summary={comp.summary as string} />;
+    case 'MemoryCard': return <MemoryCard key={key} category={comp.category as string} content={comp.content as string} contact={comp.contact as string} confidence={comp.confidence as MemoryCardProps['confidence']} />;
+    case 'DataTable': return <DataTable key={key} columns={comp.columns as DataTableProps['columns']} rows={comp.rows as DataTableProps['rows']} emptyMessage={comp.emptyMessage as string} />;
+    case 'Badge': return <Badge key={key} label={comp.label as string} variant={comp.variant as BadgeProps['variant']} />;
+    case 'ActionButton': return <ActionButton key={key} label={comp.label as string} actionName={comp.actionName as string} actionParams={comp.actionParams as Record<string, unknown>} variant={comp.variant as ActionButtonProps['variant']} onAction={handleAction} />;
+    default: return null;
+  }
+}
+
+// Render a dashboard section
+export function DashboardSection({ section }: { section: { heading?: string; layout?: string; components: Array<Record<string, unknown>> } }) {
+  const layout = section.layout || inferLayout(section.components);
+  return (
+    <div>
+      {section.heading && <p className="text-base font-bold text-gray-900 mb-2">{section.heading}</p>}
+      <div className={layoutClasses[layout] || 'flex flex-col gap-3'} style={layoutStyles[layout] || {}}>
+        {section.components.map((comp, i) => renderComponent(comp, i))}
+      </div>
+    </div>
+  );
+}
