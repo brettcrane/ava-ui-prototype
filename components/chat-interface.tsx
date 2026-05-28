@@ -45,6 +45,36 @@ const SUGGESTED_PROMPTS = [
 
 const chatTransport = new DefaultChatTransport({ api: '/api/generate' });
 
+function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*(\S[^*]*?\S|\S)\*\*/g, '$1')
+    .replace(/\*(\S[^*]*?\S|\S)\*/g, '$1')
+    .replace(/__(\S[^_]*?\S|\S)__/g, '$1')
+    .replace(/_(\S[^_]*?\S|\S)_/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/^\s*\|?[\s\-:|]*\|[\s\-:|]*$/gm, '')
+    .replace(/\|/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function speakAssistantText(text: string) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const clean = stripMarkdownForSpeech(text);
+  if (!clean) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.05;
+  window.speechSynthesis.speak(utterance);
+}
+
 export function ChatInterface() {
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<number | null>(null);
@@ -53,6 +83,17 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const lastInputSourceRef = useRef<'voice' | 'text'>('text');
+  const spokenMessageIdRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<string>('ready');
+
+  const resetSpeechState = useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    lastInputSourceRef.current = 'text';
+    spokenMessageIdRef.current = null;
+  }, []);
 
   const {
     messages,
@@ -92,8 +133,11 @@ export function ChatInterface() {
     }
   }, []);
 
-  // Load saved chats on mount
+  // Load saved chats on mount. The setState happens after `await`, not
+  // synchronously in the effect body — React's docs endorse useEffect for
+  // mount-time fetches in client components, so the rule is too strict here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSavedChats();
   }, [loadSavedChats]);
 
@@ -141,6 +185,7 @@ export function ChatInterface() {
   }, [saveChat]);
 
   const loadChat = async (chatId: number) => {
+    resetSpeechState();
     try {
       const response = await fetch(`/api/chats/${chatId}`);
       if (!response.ok) {
@@ -183,6 +228,7 @@ export function ChatInterface() {
       }
       await loadSavedChats();
       if (currentChatId === chatId) {
+        resetSpeechState();
         setMessages([]);
         setCurrentChatId(null);
       }
@@ -194,20 +240,59 @@ export function ChatInterface() {
   };
 
   const startNewChat = () => {
+    resetSpeechState();
     setMessages([]);
     setCurrentChatId(null);
     setShowChatMenu(false);
     setOperationError(null);
   };
 
-  const handleSend = useCallback((text: string) => {
+  const handleSend = useCallback((text: string, source: 'voice' | 'text' = 'text') => {
     if (!text.trim() || isLoading) return;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    lastInputSourceRef.current = source;
     sendMessage({ text });
   }, [isLoading, sendMessage]);
 
   const handleSuggestedPrompt = useCallback((prompt: string) => {
-    handleSend(prompt);
+    handleSend(prompt, 'text');
   }, [handleSend]);
+
+  // Speak Ava's reply when the user's last turn came in by voice.
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    // Only act on the streaming -> ready transition, not on idle re-renders
+    // (e.g. loading a saved chat, where status stays 'ready' but messages change).
+    if (prevStatus === 'ready' || status !== 'ready') return;
+    if (lastInputSourceRef.current !== 'voice') return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (spokenMessageIdRef.current === last.id) return;
+
+    spokenMessageIdRef.current = last.id;
+
+    const text = last.parts
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map(p => p.text)
+      .join(' ')
+      .trim();
+    if (!text) return;
+
+    speakAssistantText(text);
+  }, [status, messages]);
+
+  // Stop any in-flight speech when leaving the page.
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
