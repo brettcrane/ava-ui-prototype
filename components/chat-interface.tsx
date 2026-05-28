@@ -13,7 +13,16 @@ import {
   ChevronDownIcon,
   TrashIcon,
   ChatBubbleLeftRightIcon,
+  SparklesIcon,
+  SpeakerWaveIcon,
 } from '@heroicons/react/24/outline';
+import {
+  cancelKokoro,
+  preloadKokoro,
+  speakWithKokoro,
+  subscribeKokoroProgress,
+  type LoadProgress,
+} from '@/lib/kokoro-tts';
 
 interface SavedChat {
   id: number;
@@ -82,16 +91,89 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return voices.find((v) => v.lang.startsWith('en') && v.default) ?? null;
 }
 
-function speakAssistantText(text: string) {
+function speakWithBrowser(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  const clean = stripMarkdownForSpeech(text);
-  if (!clean) return;
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(clean);
+  const utterance = new SpeechSynthesisUtterance(text);
   const voice = pickVoice();
   if (voice) utterance.voice = voice;
   utterance.rate = 1.05;
   window.speechSynthesis.speak(utterance);
+}
+
+type VoiceMode = 'standard' | 'premium';
+const VOICE_MODE_KEY = 'ava:voiceMode';
+
+async function speakAssistantText(text: string, mode: VoiceMode) {
+  const clean = stripMarkdownForSpeech(text);
+  if (!clean) return;
+
+  // Always cancel whichever engine is currently producing audio.
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  cancelKokoro();
+
+  if (mode === 'premium') {
+    try {
+      await speakWithKokoro(clean);
+      return;
+    } catch (err) {
+      console.warn('[Voice] Kokoro failed, falling back to browser TTS:', err);
+      // Fall through to the browser engine so the demo still talks back.
+    }
+  }
+  speakWithBrowser(clean);
+}
+
+function VoiceModeToggle({
+  mode,
+  onChange,
+  progress,
+}: {
+  mode: VoiceMode;
+  onChange: (next: VoiceMode) => void;
+  progress: LoadProgress;
+}) {
+  const isPremium = mode === 'premium';
+  const isLoading = isPremium && progress.status === 'loading';
+  const isError = isPremium && progress.status === 'error';
+
+  const label = isLoading
+    ? `Loading${progress.percent ? ` ${progress.percent}%` : ''}…`
+    : isError
+      ? 'Premium failed'
+      : isPremium
+        ? 'Premium'
+        : 'Standard';
+
+  const title = isError
+    ? `Kokoro failed to load: ${progress.message ?? 'unknown error'}. Click to retry.`
+    : isPremium
+      ? 'Using Kokoro (in-browser neural TTS). Click to switch to OS voice.'
+      : 'Using OS voice. Click to switch to Kokoro neural voice.';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(isPremium ? 'standard' : 'premium')}
+      title={title}
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+        isError
+          ? 'text-red-600 hover:bg-red-50'
+          : isPremium
+            ? 'text-purple-700 bg-purple-50 hover:bg-purple-100'
+            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+      }`}
+    >
+      {isPremium ? (
+        <SparklesIcon className={`w-4 h-4 ${isLoading ? 'animate-pulse' : ''}`} />
+      ) : (
+        <SpeakerWaveIcon className="w-4 h-4" />
+      )}
+      <span>Voice: {label}</span>
+    </button>
+  );
 }
 
 export function ChatInterface() {
@@ -99,16 +181,52 @@ export function ChatInterface() {
   const [currentChatId, setCurrentChatId] = useState<number | null>(null);
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('standard');
+  const [kokoroProgress, setKokoroProgress] = useState<LoadProgress>({ status: 'idle', percent: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const lastInputSourceRef = useRef<'voice' | 'text'>('text');
   const spokenMessageIdRef = useRef<string | null>(null);
+  const voiceModeRef = useRef<VoiceMode>('standard');
+
+  // Hydrate voice mode preference from localStorage on mount, and subscribe
+  // to Kokoro loader progress. The setState happens after a localStorage
+  // read which can't run during SSR, so the lint rule's preference for an
+  // initializer doesn't apply here.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(VOICE_MODE_KEY);
+    if (saved === 'premium' || saved === 'standard') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVoiceMode(saved);
+      voiceModeRef.current = saved;
+      if (saved === 'premium') preloadKokoro();
+    }
+    return subscribeKokoroProgress(setKokoroProgress);
+  }, []);
+
+  const updateVoiceMode = useCallback((next: VoiceMode) => {
+    setVoiceMode(next);
+    voiceModeRef.current = next;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(VOICE_MODE_KEY, next);
+    }
+    // Stop any in-flight playback so the mode flip takes effect immediately.
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    cancelKokoro();
+    // Start the ~80MB model fetch the moment the user opts in so the
+    // progress UI shows up and the first utterance feels snappier.
+    if (next === 'premium') preloadKokoro();
+  }, []);
 
   const resetSpeechState = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    cancelKokoro();
     lastInputSourceRef.current = 'text';
     spokenMessageIdRef.current = null;
   }, []);
@@ -270,6 +388,7 @@ export function ChatInterface() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    cancelKokoro();
     lastInputSourceRef.current = source;
     sendMessage({ text });
   }, [isLoading, sendMessage]);
@@ -304,7 +423,7 @@ export function ChatInterface() {
     if (!text) return;
 
     spokenMessageIdRef.current = last.id;
-    speakAssistantText(text);
+    void speakAssistantText(text, voiceModeRef.current);
   }, [status, messages]);
 
   // Stop any in-flight speech when leaving the page.
@@ -313,6 +432,7 @@ export function ChatInterface() {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
+      cancelKokoro();
     };
   }, []);
 
@@ -338,6 +458,12 @@ export function ChatInterface() {
               {currentChatId ? 'Saved' : 'Save'}
             </button>
           )}
+
+          <VoiceModeToggle
+            mode={voiceMode}
+            onChange={updateVoiceMode}
+            progress={kokoroProgress}
+          />
         </div>
 
         {/* Saved chats dropdown */}
