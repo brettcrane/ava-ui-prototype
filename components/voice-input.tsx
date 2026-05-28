@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { MicrophoneIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
 // Type declarations for Web Speech API
@@ -34,6 +34,11 @@ declare global {
   }
 }
 
+const subscribeSpeechSupport = () => () => {};
+const getSpeechSupportSnapshot = () =>
+  !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+const getSpeechSupportServerSnapshot = () => false;
+
 interface VoiceInputProps {
   onSend: (text: string, source: 'voice' | 'text') => void;
   disabled?: boolean;
@@ -46,20 +51,19 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [textInput, setTextInput] = useState('');
-  const [isSupported, setIsSupported] = useState(false);
+  const isSupported = useSyncExternalStore(
+    subscribeSpeechSupport,
+    getSpeechSupportSnapshot,
+    getSpeechSupportServerSnapshot,
+  );
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Initialize speech recognition once on mount
   useEffect(() => {
+    if (!isSupported) return;
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognitionAPI) {
-      setIsSupported(false);
-      return;
-    }
-
-    setIsSupported(true);
+    if (!SpeechRecognitionAPI) return;
 
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
@@ -105,7 +109,7 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
     return () => {
       recognition.abort();
     };
-  }, []);
+  }, [isSupported]);
 
   const startRecording = useCallback(() => {
     if (!recognitionRef.current || disabled) return;

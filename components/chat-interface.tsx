@@ -51,14 +51,16 @@ function stripMarkdownForSpeech(text: string): string {
     .replace(/`([^`]+)`/g, '$1')
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
+    .replace(/\*\*(\S[^*]*?\S|\S)\*\*/g, '$1')
+    .replace(/\*(\S[^*]*?\S|\S)\*/g, '$1')
+    .replace(/__(\S[^_]*?\S|\S)__/g, '$1')
+    .replace(/_(\S[^_]*?\S|\S)_/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^>\s?/gm, '')
     .replace(/^[-*+]\s+/gm, '')
     .replace(/^\d+\.\s+/gm, '')
+    .replace(/^\s*\|?[\s\-:|]*\|[\s\-:|]*$/gm, '')
+    .replace(/\|/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -83,6 +85,15 @@ export function ChatInterface() {
   const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const lastInputSourceRef = useRef<'voice' | 'text'>('text');
   const spokenMessageIdRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<string>('ready');
+
+  const resetSpeechState = useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    lastInputSourceRef.current = 'text';
+    spokenMessageIdRef.current = null;
+  }, []);
 
   const {
     messages,
@@ -122,8 +133,11 @@ export function ChatInterface() {
     }
   }, []);
 
-  // Load saved chats on mount
+  // Load saved chats on mount. The setState happens after `await`, not
+  // synchronously in the effect body — React's docs endorse useEffect for
+  // mount-time fetches in client components, so the rule is too strict here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSavedChats();
   }, [loadSavedChats]);
 
@@ -171,6 +185,7 @@ export function ChatInterface() {
   }, [saveChat]);
 
   const loadChat = async (chatId: number) => {
+    resetSpeechState();
     try {
       const response = await fetch(`/api/chats/${chatId}`);
       if (!response.ok) {
@@ -213,6 +228,7 @@ export function ChatInterface() {
       }
       await loadSavedChats();
       if (currentChatId === chatId) {
+        resetSpeechState();
         setMessages([]);
         setCurrentChatId(null);
       }
@@ -224,6 +240,7 @@ export function ChatInterface() {
   };
 
   const startNewChat = () => {
+    resetSpeechState();
     setMessages([]);
     setCurrentChatId(null);
     setShowChatMenu(false);
@@ -245,11 +262,18 @@ export function ChatInterface() {
 
   // Speak Ava's reply when the user's last turn came in by voice.
   useEffect(() => {
-    if (status !== 'ready') return;
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    // Only act on the streaming -> ready transition, not on idle re-renders
+    // (e.g. loading a saved chat, where status stays 'ready' but messages change).
+    if (prevStatus === 'ready' || status !== 'ready') return;
     if (lastInputSourceRef.current !== 'voice') return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== 'assistant') return;
     if (spokenMessageIdRef.current === last.id) return;
+
+    spokenMessageIdRef.current = last.id;
 
     const text = last.parts
       .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -258,7 +282,6 @@ export function ChatInterface() {
       .trim();
     if (!text) return;
 
-    spokenMessageIdRef.current = last.id;
     speakAssistantText(text);
   }, [status, messages]);
 
