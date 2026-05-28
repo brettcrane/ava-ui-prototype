@@ -66,9 +66,10 @@ function stripMarkdownForSpeech(text: string): string {
 }
 
 const PREFERRED_VOICE_NAMES = [
-  'Google US English',
+  'Zoe (Premium)',
   'Ava (Premium)',
   'Samantha (Enhanced)',
+  'Google US English',
   'Samantha',
 ];
 
