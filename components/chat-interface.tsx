@@ -65,12 +65,30 @@ function stripMarkdownForSpeech(text: string): string {
     .trim();
 }
 
+const PREFERRED_VOICE_NAMES = [
+  'Google US English',
+  'Ava (Premium)',
+  'Samantha (Enhanced)',
+  'Samantha',
+];
+
+function pickVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  for (const name of PREFERRED_VOICE_NAMES) {
+    const match = voices.find((v) => v.name === name);
+    if (match) return match;
+  }
+  return voices.find((v) => v.lang.startsWith('en') && v.default) ?? null;
+}
+
 function speakAssistantText(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   const clean = stripMarkdownForSpeech(text);
   if (!clean) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(clean);
+  const voice = pickVoice();
+  if (voice) utterance.voice = voice;
   utterance.rate = 1.05;
   window.speechSynthesis.speak(utterance);
 }
@@ -261,23 +279,30 @@ export function ChatInterface() {
   }, [handleSend]);
 
   // Speak Ava's reply when the user's last turn came in by voice.
+  // Fires as soon as a non-text part appears alongside text (text portion
+  // is done, components are starting), or on the streaming -> ready
+  // transition for pure-text replies. The spokenMessageIdRef dedup means
+  // we still only speak each message once.
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
     prevStatusRef.current = status;
 
-    // Only act on the streaming -> ready transition, not on idle re-renders
-    // (e.g. loading a saved chat, where status stays 'ready' but messages change).
-    if (prevStatus === 'ready' || status !== 'ready') return;
     if (lastInputSourceRef.current !== 'voice') return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== 'assistant') return;
     if (spokenMessageIdRef.current === last.id) return;
 
+    const hasText = last.parts.some((p) => p.type === 'text');
+    const hasNonText = last.parts.some((p) => p.type !== 'text');
+    const streamingTextDone = status === 'streaming' && hasText && hasNonText;
+    const readyTransition = prevStatus !== 'ready' && status === 'ready';
+    if (!streamingTextDone && !readyTransition) return;
+
     spokenMessageIdRef.current = last.id;
 
     const text = last.parts
       .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-      .map(p => p.text)
+      .map((p) => p.text)
       .join(' ')
       .trim();
     if (!text) return;
