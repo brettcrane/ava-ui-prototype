@@ -103,7 +103,6 @@ export function ChatInterface() {
   const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const lastInputSourceRef = useRef<'voice' | 'text'>('text');
   const spokenMessageIdRef = useRef<string | null>(null);
-  const prevStatusRef = useRef<string>('ready');
 
   const resetSpeechState = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -279,26 +278,21 @@ export function ChatInterface() {
   }, [handleSend]);
 
   // Speak Ava's reply when the user's last turn came in by voice.
-  // Fires as soon as a non-text part appears alongside text (text portion
-  // is done, components are starting), or on the streaming -> ready
-  // transition for pure-text replies. The spokenMessageIdRef dedup means
-  // we still only speak each message once.
+  // Fires when the text portion is "done": either a non-text part has
+  // appeared alongside text (components starting, per the text -> ---UI---
+  // pattern), or streaming has finished. spokenMessageIdRef prevents
+  // re-speaking; lastInputSourceRef reset on conversation switches
+  // prevents replaying historical messages.
   useEffect(() => {
-    const prevStatus = prevStatusRef.current;
-    prevStatusRef.current = status;
-
     if (lastInputSourceRef.current !== 'voice') return;
+    if (status === 'submitted') return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== 'assistant') return;
     if (spokenMessageIdRef.current === last.id) return;
 
-    const hasText = last.parts.some((p) => p.type === 'text');
     const hasNonText = last.parts.some((p) => p.type !== 'text');
-    const streamingTextDone = status === 'streaming' && hasText && hasNonText;
-    const readyTransition = prevStatus !== 'ready' && status === 'ready';
-    if (!streamingTextDone && !readyTransition) return;
-
-    spokenMessageIdRef.current = last.id;
+    const textDone = hasNonText || status === 'ready';
+    if (!textDone) return;
 
     const text = last.parts
       .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -307,6 +301,7 @@ export function ChatInterface() {
       .trim();
     if (!text) return;
 
+    spokenMessageIdRef.current = last.id;
     speakAssistantText(text);
   }, [status, messages]);
 
