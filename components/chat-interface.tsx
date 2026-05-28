@@ -45,6 +45,34 @@ const SUGGESTED_PROMPTS = [
 
 const chatTransport = new DefaultChatTransport({ api: '/api/generate' });
 
+function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function speakAssistantText(text: string) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const clean = stripMarkdownForSpeech(text);
+  if (!clean) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.05;
+  window.speechSynthesis.speak(utterance);
+}
+
 export function ChatInterface() {
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<number | null>(null);
@@ -53,6 +81,8 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveChatRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const lastInputSourceRef = useRef<'voice' | 'text'>('text');
+  const spokenMessageIdRef = useRef<string | null>(null);
 
   const {
     messages,
@@ -200,14 +230,46 @@ export function ChatInterface() {
     setOperationError(null);
   };
 
-  const handleSend = useCallback((text: string) => {
+  const handleSend = useCallback((text: string, source: 'voice' | 'text' = 'text') => {
     if (!text.trim() || isLoading) return;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    lastInputSourceRef.current = source;
     sendMessage({ text });
   }, [isLoading, sendMessage]);
 
   const handleSuggestedPrompt = useCallback((prompt: string) => {
-    handleSend(prompt);
+    handleSend(prompt, 'text');
   }, [handleSend]);
+
+  // Speak Ava's reply when the user's last turn came in by voice.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    if (lastInputSourceRef.current !== 'voice') return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (spokenMessageIdRef.current === last.id) return;
+
+    const text = last.parts
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map(p => p.text)
+      .join(' ')
+      .trim();
+    if (!text) return;
+
+    spokenMessageIdRef.current = last.id;
+    speakAssistantText(text);
+  }, [status, messages]);
+
+  // Stop any in-flight speech when leaving the page.
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">

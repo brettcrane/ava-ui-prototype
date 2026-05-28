@@ -35,7 +35,7 @@ declare global {
 }
 
 interface VoiceInputProps {
-  onSend: (text: string) => void;
+  onSend: (text: string, source: 'voice' | 'text') => void;
   disabled?: boolean;
   placeholder?: string;
   leftSlot?: React.ReactNode;
@@ -134,7 +134,7 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
     const finalText = (transcript + interimTranscript).trim();
     console.log('[Voice] Final text to send:', finalText);
     if (finalText) {
-      onSend(finalText);
+      onSend(finalText, 'voice');
       setTranscript('');
       setInterimTranscript('');
     }
@@ -152,7 +152,7 @@ export function VoiceInput({ onSend, disabled = false, placeholder = 'Message Av
     e.preventDefault();
     const text = textInput.trim();
     if (text && !disabled) {
-      onSend(text);
+      onSend(text, 'text');
       setTextInput('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
