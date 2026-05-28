@@ -81,13 +81,13 @@ export const tools = {
 - "full-width": for OpportunityCard, DataTable, TaskList (need full width)
 - "stack": for vertical lists of mixed items
 If layout is omitted, it defaults based on component types automatically.`,
-    parameters: z.object({ sections: z.array(sectionSchema) }),
+    inputSchema: z.object({ sections: z.array(sectionSchema) }),
     execute: async (input: any) => ({ sections: input.sections }),
   } as any),
 
   show_contacts: tool({
     description: 'Display one or more contact cards in a grid layout.',
-    parameters: z.object({
+    inputSchema: z.object({
       contacts: z.array(z.object({
         name: z.string(),
         title: z.string().optional(),
@@ -101,7 +101,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_opportunity: tool({
     description: 'Display a single opportunity/deal card with pipeline stage, amount, and probability.',
-    parameters: z.object({
+    inputSchema: z.object({
       name: z.string(),
       amount: z.number(),
       stage: z.string(),
@@ -113,7 +113,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_metrics: tool({
     description: 'Display a row of metric/KPI cards showing key numbers.',
-    parameters: z.object({
+    inputSchema: z.object({
       metrics: z.array(z.object({
         label: z.string(),
         value: z.union([z.string(), z.number()]),
@@ -127,7 +127,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_emails: tool({
     description: 'Display a list of email previews.',
-    parameters: z.object({
+    inputSchema: z.object({
       emails: z.array(z.object({
         subject: z.string(),
         from: z.string().optional(),
@@ -142,13 +142,13 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_tasks: tool({
     description: 'Display a compact task checklist.',
-    parameters: z.object({ tasks: z.array(taskSchema) }),
+    inputSchema: z.object({ tasks: z.array(taskSchema) }),
     execute: async (input: any) => ({ tasks: input.tasks }),
   } as any),
 
   show_meetings: tool({
     description: 'Display meeting cards in a grid.',
-    parameters: z.object({
+    inputSchema: z.object({
       meetings: z.array(z.object({
         title: z.string(),
         date: z.string(),
@@ -162,7 +162,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_files: tool({
     description: 'Display file cards for documents.',
-    parameters: z.object({
+    inputSchema: z.object({
       files: z.array(z.object({
         name: z.string(),
         fileType: z.string(),
@@ -175,7 +175,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_memories: tool({
     description: 'Display stakeholder intelligence/memory cards with insights about contacts.',
-    parameters: z.object({
+    inputSchema: z.object({
       memories: z.array(z.object({
         category: z.string(),
         content: z.string(),
@@ -188,7 +188,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_info: tool({
     description: 'Display a single info card with a title and content text.',
-    parameters: z.object({
+    inputSchema: z.object({
       title: z.string(),
       content: z.string(),
       variant: z.string().optional(),
@@ -198,7 +198,7 @@ If layout is omitted, it defaults based on component types automatically.`,
 
   show_table: tool({
     description: 'Display a data table with columns and rows.',
-    parameters: z.object({
+    inputSchema: z.object({
       columns: z.array(columnSchema),
       rows: z.array(z.record(z.string(), z.unknown())),
       emptyMessage: z.string().optional(),
