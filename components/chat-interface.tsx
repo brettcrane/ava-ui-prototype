@@ -279,11 +279,11 @@ export function ChatInterface() {
   }, [handleSend]);
 
   // Speak Ava's reply when the user's last turn came in by voice.
-  // Fires when the text portion is "done": either a non-text part has
-  // appeared alongside text (components starting, per the text -> ---UI---
-  // pattern), or streaming has finished. spokenMessageIdRef prevents
-  // re-speaking; lastInputSourceRef reset on conversation switches
-  // prevents replaying historical messages.
+  // Fires when every text part is marked 'done' (so components can still
+  // be streaming/rendering, but the spoken portion is complete) — the AI
+  // SDK sets state='done' on a text part once Claude stops appending to
+  // it. Falls back to status === 'ready' for messages whose parts don't
+  // expose state (e.g. loaded from storage).
   useEffect(() => {
     if (lastInputSourceRef.current !== 'voice') return;
     if (status === 'submitted') return;
@@ -291,15 +291,16 @@ export function ChatInterface() {
     if (!last || last.role !== 'assistant') return;
     if (spokenMessageIdRef.current === last.id) return;
 
-    const hasNonText = last.parts.some((p) => p.type !== 'text');
-    const textDone = hasNonText || status === 'ready';
-    if (!textDone) return;
+    type TextPart = { type: 'text'; text: string; state?: 'streaming' | 'done' };
+    const textParts = last.parts.filter(
+      (p): p is TextPart => p.type === 'text',
+    );
+    if (textParts.length === 0) return;
 
-    const text = last.parts
-      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-      .map((p) => p.text)
-      .join(' ')
-      .trim();
+    const allTextDone = textParts.every((p) => p.state === 'done');
+    if (!allTextDone && status !== 'ready') return;
+
+    const text = textParts.map((p) => p.text).join(' ').trim();
     if (!text) return;
 
     spokenMessageIdRef.current = last.id;
